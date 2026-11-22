@@ -7,10 +7,11 @@ import {
   Trash2,
   Tv,
 } from 'lucide-react';
-import { DEFAULT_SPONSOR_BANNERS } from '../data/tvTemplates';
+import { DEFAULT_SPONSOR_BANNERS, WHATSAPP_DISPLAY } from '../data/tvTemplates';
 import { SponsorBanner } from '../types/broadcast';
 
 interface SponsorManagerPanelProps {
+  programTitle?: string;
   sponsors: SponsorBanner[];
   onUpdateSponsors: (next: SponsorBanner[]) => void;
   onPushSponsorToLowerThird: (sponsor: SponsorBanner) => void;
@@ -55,6 +56,7 @@ async function resizeLogoFileToDataUrl(file: File): Promise<string> {
 }
 
 export const SponsorManagerPanel: React.FC<SponsorManagerPanelProps> = ({
+  programTitle = '#SinFiltro',
   sponsors,
   onUpdateSponsors,
   onPushSponsorToLowerThird,
@@ -122,11 +124,11 @@ export const SponsorManagerPanel: React.FC<SponsorManagerPanelProps> = ({
           <div className="flex items-center gap-2">
             <Megaphone className="w-4 h-4 text-emerald-400" />
             <h2 className="font-display text-base font-semibold text-white">
-              Espacio Publicitario y Auspiciantes (#SinFiltro)
+              Espacio Publicitario y Auspiciantes ({programTitle})
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Agregá el logo, nombre y mensaje de cada comercio o auspiciante. Se muestran en vivo debajo de la transmisión.
+            Agregá el logo, nombre y mensaje de cada comercio o auspiciante. Los espacios libres derivan al WhatsApp {WHATSAPP_DISPLAY}.
           </p>
         </div>
 

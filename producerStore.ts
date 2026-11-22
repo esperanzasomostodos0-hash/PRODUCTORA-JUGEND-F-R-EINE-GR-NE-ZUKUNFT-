@@ -7,6 +7,7 @@ import {
   ProducerInquiry,
   ProducerProgram,
   ProducerRole,
+  ProgramArchiveVideo,
   ProgramCreationRequest,
   ProgramRequestStatus,
   SiteContentConfig,
@@ -17,6 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DATA_DIR = path.resolve(__dirname, 'data');
+export const VIDEOS_DIR = path.resolve(DATA_DIR, 'videos');
 const DB_FILE = path.resolve(DATA_DIR, 'producer-db.json');
 
 interface StoredUserRecord extends StaffUserPublic {
@@ -31,6 +33,7 @@ interface ProducerDatabase {
   programs: ProducerProgram[];
   programRequests: ProgramCreationRequest[];
   inquiries: ProducerInquiry[];
+  videos: ProgramArchiveVideo[];
 }
 
 export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
@@ -38,19 +41,19 @@ export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
   foundingDateText: '20 de noviembre de 2026',
   locationText: 'Puerto Esperanza, Misiones',
   mottoText: 'Licht, Kamera, Action!',
-  logoUrl: '/assets/aistudio/6b6ea9d5-89b9-46b8-b909-d08cfd9a986f_1965e536.png',
+  logoUrl: '/assets/aistudio/jz-logo-transparent.png',
   heroImageUrl: '/src/assets/images/hero_production_set_1795376282591.jpg',
   heroHeadline:
     'Productora audiovisual de programas con identidad propia y dirección en vivo',
   heroDescription:
     'JUGEND FÜR EINE GRÜNE ZUKUNFT nace el 20 de noviembre de 2026 para concebir, dirigir y emitir formatos propios de televisión, radio visual y documentales con estética cinematográfica y tecnología de transmisión directa en alta definición.',
   heroPrimaryCta: 'Explorar Programas',
-  heroSecondaryCta: 'Ir a la señal de #SinFiltro',
+  heroSecondaryCta: 'Ver Emisiones en Vivo',
   emblemTagline: 'Juventud por un Futuro Verde',
   emblemCategory: 'CASA PRODUCTORA',
   dossierMetrics: [
     { label: 'Fecha de nacimiento', value: '20/11/2026' },
-    { label: 'Programa inaugural', value: '#SinFiltro TV & Radio' },
+    { label: 'Formación audiovisual', value: 'TV, Radio Visual y Cine' },
     { label: 'Ingeniería de emisión', value: '1280×720 HD · 30 FPS' },
     { label: 'Frecuencia aliada', value: 'Radioactiva 88.5 FM', accent: true },
   ],
@@ -80,7 +83,7 @@ export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
   programsEyebrow: '02. CARTELERA Y FORMATOS ORIGINALES',
   programsTitle: 'Programas en el aire y nuevos ciclos de la productora',
   programsSubtitle:
-    'Además de #SinFiltro junto a Jóvenes de Huella Verde, nuestra casa productora impulsa nuevos ciclos y recibe propuestas para crear programas originales.',
+    'Nuestra casa productora produce ciclos propios de televisión, radio visual y documentales, y recibe propuestas para crear nuevos programas originales.',
   servicesEyebrow: '03. CAPACIDADES DE PRODUCCIÓN E INGENIERÍA PROPIA',
   servicesTitle: 'Del guion al aire en un ecosistema integrado',
   controlRoomImageUrl: '/src/assets/images/service_control_room_1795376283734.jpg',
@@ -127,9 +130,9 @@ export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
       index: '01',
       name: 'Auspicio en Programación Viva',
       detail:
-        'Presencia visual en los Banners 1, 2 y 3 debajo de la transmisión oficial de #SinFiltro, mención en mesa y acceso directo al WhatsApp comercial de tu comercio.',
+        'Presencia visual en los banners debajo de nuestras transmisiones oficiales, mención en vivo y acceso directo al WhatsApp comercial de tu comercio.',
       actionLabel: 'Solicitar pauta comercial',
-      topic: 'Auspicio comercial en #SinFiltro',
+      topic: 'Auspicio Comercial',
     },
     {
       index: '02',
@@ -152,8 +155,8 @@ export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
   contactTitle: 'Pongamos tu próximo programa en marcha',
   contactBody:
     'Escribinos para pautar en nuestros ciclos vigentes, producir un formato audiovisual nuevo o coordinar una reunión en estudio.',
-  whatsappDisplay: '+54 9 3757 65-4327',
-  whatsappNumber: '5493757654327',
+  whatsappDisplay: '+54 9 3757 30-0369',
+  whatsappNumber: '5493757300369',
   contactEmail: 'produccion@jugendgruenezukunft.com',
   footerSubline:
     'Licht, Kamera, Action! · Fundada el 20/11/2026 · Puerto Esperanza, Misiones',
@@ -169,7 +172,7 @@ export const DEFAULT_PROGRAMS: ProducerProgram[] = [
     schedule: 'Sábados 17:00 a 19:00 · Radioactiva 88.5 FM',
     duration: '120 min · Semanal',
     summary:
-      'Nuestro programa insignia junto a Jóvenes de Huella Verde. Debate actual, agenda semanal de Puerto Esperanza, invitados en estudio, música y trivias con premios en vivo.',
+      'Programa semanal de debate actual, agenda de Puerto Esperanza, invitados en estudio, música y trivias con premios en vivo.',
     fullSynopsis:
       '#SinFiltro combina radio FM tradicional con realización televisiva multicámara en 1280×720 HD. Cada sábado reúne a jóvenes, referentes comunitarios y emprendedores locales con participación directa de la audiencia mediante comentarios en vivo, mensajes de WhatsApp y sorteos instantáneos en pantalla.',
     technicalSpecs: [
@@ -181,7 +184,7 @@ export const DEFAULT_PROGRAMS: ProducerProgram[] = [
     imageUrl: '/src/assets/images/program_sinfiltro_desk_1795376283057.jpg',
     logoUrl: '/assets/aistudio/sin-filtro-logoo2_2e0a15d3.png',
     featured: true,
-    hostTeam: 'Jóvenes de Huella Verde',
+    hostTeam: 'Mesa de Conducción JZ',
     channelOrSignal: 'Radioactiva 88.5 FM + Web HD',
     createdAt: 1795132800000,
   },
@@ -191,7 +194,7 @@ export const DEFAULT_PROGRAMS: ProducerProgram[] = [
     statusKey: 'preproduction',
     statusLabel: 'En preproducción · 2027',
     format: 'Serie Documental Territorial',
-    schedule: 'Temporada Inaugural · 6 episodios',
+    schedule: 'Primera Temporada · 6 episodios',
     duration: '28 min por episodio',
     summary:
       'Retratos cinematográficos sobre iniciativas ambientales, cultura joven y oficios sustentables en el norte misionero.',
@@ -224,6 +227,7 @@ export const DEFAULT_PROGRAMS: ProducerProgram[] = [
       'Iluminación escénica controlada por escenas',
       'Masterización estéreo para streaming y radio',
     ],
+    imageUrl: '/src/assets/images/studio_podcast_desk_1795296509941.jpg',
     hostTeam: 'Producción Musical JZ',
     channelOrSignal: 'Estudio A + Radioactiva 88.5',
     createdAt: 1795132802000,
@@ -245,6 +249,7 @@ export const DEFAULT_PROGRAMS: ProducerProgram[] = [
       'Placa de trivias y consignas en tiempo real',
       'Archivo completo en video HD al finalizar cada emisión',
     ],
+    imageUrl: '/src/assets/images/studio_talk_show_1795296510184.jpg',
     hostTeam: 'Mesa Editorial JZ',
     channelOrSignal: 'Streaming Web HD',
     createdAt: 1795132803000,
@@ -275,6 +280,7 @@ function loadDatabase(): ProducerDatabase {
           ? parsed.programRequests
           : [],
         inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
+        videos: Array.isArray(parsed.videos) ? parsed.videos : [],
       };
     }
   } catch (err) {
@@ -287,6 +293,7 @@ function loadDatabase(): ProducerDatabase {
     programs: [...DEFAULT_PROGRAMS],
     programRequests: [],
     inquiries: [],
+    videos: [],
   };
 }
 
@@ -1031,3 +1038,111 @@ export function addInquiry(input: {
   saveDatabase();
   return { ok: true, inquiry: entry };
 }
+
+export function resolveSafeVideoPath(fileName: string): string | null {
+  const base = path.basename(String(fileName || '').trim());
+  if (!base || base !== fileName || base.includes('..')) return null;
+  const resolved = path.resolve(VIDEOS_DIR, base);
+  if (!resolved.startsWith(VIDEOS_DIR + path.sep)) return null;
+  return resolved;
+}
+
+export function listProgramVideos(programId?: string): ProgramArchiveVideo[] {
+  if (!programId) return db.videos;
+  return db.videos.filter((v) => v.programId === programId);
+}
+
+export function addProgramVideo(input: {
+  programId: string;
+  title: string;
+  episodeLabel?: string;
+  description?: string;
+  durationLabel?: string;
+  videoUrl: string;
+  isUploadedFile: boolean;
+  fileName?: string;
+  mimeType?: string;
+  fileSizeBytes?: number;
+  uploadedBy: string;
+}):
+  | { ok: true; video: ProgramArchiveVideo }
+  | { ok: false; error: string } {
+  const title = input.title.trim().slice(0, 120);
+  if (!title) {
+    return { ok: false, error: 'El título del episodio es obligatorio.' };
+  }
+  const safeUrl = input.isUploadedFile
+    ? input.videoUrl
+    : sanitizeSafeUrl(input.videoUrl, '');
+  if (!safeUrl) {
+    return { ok: false, error: 'La URL o archivo de video no es válido.' };
+  }
+
+  const video: ProgramArchiveVideo = {
+    id: `vid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    programId: input.programId,
+    title,
+    episodeLabel:
+      String(input.episodeLabel || '').trim().slice(0, 60) ||
+      new Date().toLocaleDateString('es-AR'),
+    description: String(input.description || '').trim().slice(0, 500),
+    durationLabel: String(input.durationLabel || '').trim().slice(0, 30) || 'HD',
+    videoUrl: safeUrl,
+    isUploadedFile: input.isUploadedFile,
+    fileName: input.fileName,
+    mimeType: input.mimeType,
+    fileSizeBytes: input.fileSizeBytes,
+    uploadedBy: input.uploadedBy,
+    createdAt: Date.now(),
+  };
+
+  db.videos.unshift(video);
+  saveDatabase();
+  return { ok: true, video };
+}
+
+export function updateProgramVideo(
+  videoId: string,
+  patch: {
+    title?: string;
+    episodeLabel?: string;
+    description?: string;
+    durationLabel?: string;
+  }
+): { ok: true; video: ProgramArchiveVideo } | { ok: false; error: string } {
+  const vid = db.videos.find((v) => v.id === videoId);
+  if (!vid) return { ok: false, error: 'Video no encontrado.' };
+  if (typeof patch.title === 'string' && patch.title.trim()) {
+    vid.title = patch.title.trim().slice(0, 120);
+  }
+  if (typeof patch.episodeLabel === 'string') {
+    vid.episodeLabel = patch.episodeLabel.trim().slice(0, 60);
+  }
+  if (typeof patch.description === 'string') {
+    vid.description = patch.description.trim().slice(0, 500);
+  }
+  if (typeof patch.durationLabel === 'string') {
+    vid.durationLabel = patch.durationLabel.trim().slice(0, 30);
+  }
+  saveDatabase();
+  return { ok: true, video: vid };
+}
+
+export function deleteProgramVideo(videoId: string): boolean {
+  const idx = db.videos.findIndex((v) => v.id === videoId);
+  if (idx === -1) return false;
+  const [removed] = db.videos.splice(idx, 1);
+  if (removed.isUploadedFile && removed.fileName) {
+    const safePath = resolveSafeVideoPath(removed.fileName);
+    if (safePath && fs.existsSync(safePath)) {
+      try {
+        fs.unlinkSync(safePath);
+      } catch {
+        // ignore disk unlink error
+      }
+    }
+  }
+  saveDatabase();
+  return true;
+}
+

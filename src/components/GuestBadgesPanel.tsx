@@ -123,7 +123,7 @@ export const GuestBadgesPanel: React.FC<GuestBadgesPanelProps> = ({
             type="text"
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            placeholder="Ej: Huella Verde"
+            placeholder="Ej: Referente Local"
             className="w-full px-3 py-2 bg-[#121720] border border-white/12 rounded-lg text-xs text-slate-200"
           />
         </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUpRight,
   Gift,
   Handshake,
   Home,
@@ -13,14 +14,17 @@ import {
   Send,
   Store,
   Trophy,
+  Tv,
   Users,
   Volume2,
   VolumeX,
 } from 'lucide-react';
 import {
   DEFAULT_SPONSOR_BANNERS,
+  OFFICIAL_PRODUCER_LOGO,
   OFFICIAL_SINFILTRO_LOGO,
-  WHATSAPP_CONTACT_URL,
+  WHATSAPP_DISPLAY,
+  WHATSAPP_NUMBER,
   getSponsorWhatsAppUrl,
 } from '../data/tvTemplates';
 import {
@@ -28,8 +32,11 @@ import {
   SponsorBanner,
   ViewerComment,
 } from '../types/broadcast';
+import { ProducerProgram, StaffUserPublic } from '../types/producer';
+import { ProgramVideosArchive } from './ProgramVideosArchive';
 
 interface ViewerState {
+  programId?: string;
   isLive: boolean;
   startedAt: number | null;
   showName: string;
@@ -97,14 +104,30 @@ function getSlotIcon(idx: number) {
 }
 
 interface LiveViewerPageProps {
+  programId?: string;
+  authToken?: string | null;
+  currentUser?: StaffUserPublic | null;
+  onRequestAuth?: () => void;
+  onSelectProgram?: (programId: string) => void;
+  onOpenApartado?: (programId: string) => void;
   onBack?: () => void;
   onHome?: () => void;
 }
 
 export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
+  programId = 'sin-filtro',
+  authToken = null,
+  currentUser = null,
+  onRequestAuth,
+  onSelectProgram,
+  onOpenApartado,
   onBack,
   onHome,
 }) => {
+  const activeProgramId = programId || 'sin-filtro';
+  const [programs, setPrograms] = useState<ProducerProgram[]>([]);
+  const [siteWhatsappNumber, setSiteWhatsappNumber] = useState<string>(WHATSAPP_NUMBER);
+  const [siteWhatsappDisplay, setSiteWhatsappDisplay] = useState<string>(WHATSAPP_DISPLAY);
   const [viewerState, setViewerState] = useState<ViewerState | null>(null);
   const [hasFallbackFrame, setHasFallbackFrame] = useState(false);
   const [audienceCount, setAudienceCount] = useState<number>(36);
@@ -145,6 +168,29 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
     `viewer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   );
 
+  useEffect(() => {
+    fetch('/api/producer/programs')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok && Array.isArray(d.programs)) setPrograms(d.programs);
+      })
+      .catch(() => {});
+
+    fetch('/api/producer/site')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok && d.siteContent) {
+          if (d.siteContent.whatsappNumber) {
+            setSiteWhatsappNumber(String(d.siteContent.whatsappNumber).replace(/\D/g, '') || WHATSAPP_NUMBER);
+          }
+          if (d.siteContent.whatsappDisplay) {
+            setSiteWhatsappDisplay(String(d.siteContent.whatsappDisplay));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const ensureViewerAudioContext = () => {
     if (!audioCtxRef.current) {
       const Ctor =
@@ -183,9 +229,25 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
   };
 
   useEffect(() => {
-    const clientId = clientIdRef.current;
+    // Reset viewer stream state cleanly when switching programs
+    setViewerState(null);
+    latestFrameRef.current = null;
+    hasFallbackFrameRef.current = false;
+    setHasFallbackFrame(false);
+    setRtcConnected(false);
+    setRtcVideoReady(false);
+    setRelayAudioActive(false);
+    relayActiveRef.current = false;
+    pendingIceRef.current = [];
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
 
-    fetch('/api/broadcast/state')
+    const clientId = clientIdRef.current;
+    const qp = encodeURIComponent(activeProgramId);
+
+    fetch(`/api/broadcast/state?programId=${qp}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.state) setViewerState(data.state);
@@ -203,14 +265,17 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
       .catch(() => {});
 
     const es = new EventSource(
-      `/api/broadcast/events?role=viewer&clientId=${encodeURIComponent(clientId)}`
+      `/api/broadcast/events?role=viewer&clientId=${encodeURIComponent(
+        clientId
+      )}&programId=${qp}`
     );
 
     const sendSignal = (type: string, payload: unknown) => {
-      fetch('/api/rtc/signal', {
+      fetch(`/api/rtc/signal?programId=${qp}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          programId: activeProgramId,
           targetId: 'broadcaster',
           fromId: clientId,
           type,
@@ -231,7 +296,6 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
               playoutDelayHint?: number;
               jitterBufferTarget?: number;
             };
-            // 60ms buffer prevents packet-jitter stutters & keyframe pixelation while staying real-time
             if ('playoutDelayHint' in r) r.playoutDelayHint = 0.06;
             if ('jitterBufferTarget' in r) r.jitterBufferTarget = 60;
           });
@@ -391,7 +455,6 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
         src.connect(ctx.destination);
 
         const now = ctx.currentTime;
-        // Ultra-tight jitter buffer (<75ms): never let fallback audio drift behind live video
         if (nextPlayTimeRef.current < now || nextPlayTimeRef.current > now + 0.075) {
           nextPlayTimeRef.current = now + 0.015;
         }
@@ -433,7 +496,6 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
           await pc.setRemoteDescription(
             new RTCSessionDescription(msg.payload as RTCSessionDescriptionInit)
           );
-          // Flush any early ICE candidates
           while (pendingIceRef.current.length > 0) {
             const c = pendingIceRef.current.shift()!;
             await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
@@ -469,7 +531,7 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
         audioCtxRef.current = null;
       }
     };
-  }, []);
+  }, [activeProgramId]);
 
   const handleToggleFullscreen = () => {
     if (!playerContainerRef.current) return;
@@ -480,26 +542,58 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
     }
   };
 
+  const activeCatalogProgram = programs.find((p) => p.id === activeProgramId);
+  const showName =
+    viewerState?.showName || activeCatalogProgram?.title || '#SinFiltro';
+  const accentHex = viewerState?.accentHex || '#16A34A';
+  const logoUrl =
+    viewerState?.overlays?.logoUrl ||
+    activeCatalogProgram?.logoUrl ||
+    (activeProgramId === 'sin-filtro'
+      ? OFFICIAL_SINFILTRO_LOGO
+      : OFFICIAL_PRODUCER_LOGO);
+  const isLive = Boolean(viewerState?.isLive);
+  const sponsors =
+    viewerState?.sponsors && viewerState.sponsors.length > 0
+      ? viewerState.sponsors
+      : DEFAULT_SPONSOR_BANNERS;
+
+  const cleanWaDigits =
+    (siteWhatsappNumber || WHATSAPP_NUMBER).replace(/\D/g, '') || WHATSAPP_NUMBER;
+
+  const whatsappContactUrl =
+    activeProgramId === 'sin-filtro'
+      ? `https://wa.me/${cleanWaDigits}?text=${encodeURIComponent(
+          'Hola #SinFiltro, quiero mandar un mensaje a la radio.'
+        )}`
+      : `https://wa.me/${cleanWaDigits}?text=${encodeURIComponent(
+          `Hola ${showName}, quiero mandar un mensaje al programa.`
+        )}`;
+
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentAuthor.trim() || !commentMessage.trim()) return;
     setSendingComment(true);
     setCommentFeedback(null);
     try {
-      const res = await fetch('/api/broadcast/comments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          author: commentAuthor.trim(),
-          location: commentLocation.trim(),
-          message: commentMessage.trim(),
-        }),
-      });
+      const res = await fetch(
+        `/api/broadcast/comments?programId=${encodeURIComponent(activeProgramId)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            programId: activeProgramId,
+            author: commentAuthor.trim(),
+            location: commentLocation.trim(),
+            message: commentMessage.trim(),
+          }),
+        }
+      );
       const data = await res.json();
       if (data.ok) {
         if (Array.isArray(data.comments)) setComments(data.comments);
         setCommentMessage('');
-        setCommentFeedback('¡Tu comentario fue enviado a la mesa de #SinFiltro!');
+        setCommentFeedback(`¡Tu comentario fue enviado a la mesa de ${showName}!`);
         window.setTimeout(() => setCommentFeedback(null), 3500);
       }
     } catch {
@@ -508,15 +602,6 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
       setSendingComment(false);
     }
   };
-
-  const showName = viewerState?.showName || '#SinFiltro';
-  const accentHex = viewerState?.accentHex || '#16A34A';
-  const logoUrl = viewerState?.overlays?.logoUrl || OFFICIAL_SINFILTRO_LOGO;
-  const isLive = Boolean(viewerState?.isLive);
-  const sponsors =
-    viewerState?.sponsors && viewerState.sponsors.length > 0
-      ? viewerState.sponsors
-      : DEFAULT_SPONSOR_BANNERS;
 
   return (
     <div className="min-h-screen bg-[#050806] text-slate-100 flex flex-col">
@@ -548,6 +633,24 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
               <Users className="w-3.5 h-3.5" />
               <span>{audienceCount.toLocaleString('es-AR')}</span>
             </span>
+            {onOpenApartado ? (
+              <button
+                type="button"
+                onClick={() => onOpenApartado(activeProgramId)}
+                className="min-h-[34px] px-2.5 py-1 border border-emerald-500/40 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-200 rounded-md inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              >
+                <span>Apartado</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <a
+                href={`/?programa=${encodeURIComponent(activeProgramId)}`}
+                className="min-h-[34px] px-2.5 py-1 border border-emerald-500/40 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-200 rounded-md inline-flex items-center gap-1 whitespace-nowrap"
+              >
+                <span>Apartado</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </a>
+            )}
             {onBack && (
               <button
                 type="button"
@@ -578,9 +681,38 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
             )}
           </div>
         </div>
+
+        {/* Program Signal Switcher Strip when multiple programs exist */}
+        {programs.length > 1 && onSelectProgram && (
+          <div className="border-t border-white/8 bg-[#060A07]">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto text-xs">
+              <span className="text-[11px] font-mono text-slate-400 inline-flex items-center gap-1.5 shrink-0 pr-1">
+                <Tv className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Señales:</span>
+              </span>
+              {programs.map((prog) => {
+                const active = prog.id === activeProgramId;
+                return (
+                  <button
+                    key={prog.id}
+                    type="button"
+                    onClick={() => onSelectProgram(prog.id)}
+                    className={`px-3 py-1 rounded-md font-medium whitespace-nowrap cursor-pointer transition-colors ${
+                      active
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                    }`}
+                  >
+                    {prog.title}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </header>
 
-      {/* Main Player Viewport + Comunicate + Espacio Publicitario + Comentarios */}
+      {/* Main Player Viewport + Programas Anteriores + Espacio Publicitario + Comentarios */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 flex flex-col gap-8">
         <div className="space-y-4">
           {/* 16:9 Live Broadcast Player */}
@@ -603,7 +735,7 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
               }`}
             />
 
-            {/* Real-Time Server-Relayed Frame Stream Fallback (direct DOM src updates, 0 React re-renders) */}
+            {/* Real-Time Server-Relayed Frame Stream Fallback */}
             {isLive && !rtcVideoReady && hasFallbackFrame && (
               <img
                 ref={frameImgRef}
@@ -639,7 +771,7 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
                 <p className="mt-2 text-sm text-slate-300 max-w-md">
                   {isLive
                     ? 'Conectando señal de video y audio en directo...'
-                    : 'La transmisión comenzará en instantes. Quedate conectado.'}
+                    : 'La transmisión comenzará en instantes. Quedate conectado o mirá los programas anteriores debajo.'}
                 </p>
               </div>
             )}
@@ -689,7 +821,7 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
             </div>
           </div>
 
-          {/* Broadcast Info Strip + WhatsApp "Comunicate con #SIN FILTRO" Button */}
+          {/* Broadcast Info Strip + WhatsApp Contact Button */}
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 bg-[#0A110D] border border-white/10 rounded-xl text-xs">
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2 text-slate-300">
@@ -727,22 +859,27 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
               </div>
               <p className="text-slate-400">
                 {viewerState?.overlays?.lowerThirdSubtitle ||
+                  activeCatalogProgram?.schedule ||
                   'Sábados de 17:00 a 19:00 · Radioactiva 88.5 Puerto Esperanza'}
               </p>
             </div>
 
             <a
-              href={WHATSAPP_CONTACT_URL}
+              href={whatsappContactUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="min-h-[42px] px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs sm:text-sm font-semibold rounded-lg shadow-lg shadow-emerald-950/50 flex items-center gap-2 whitespace-nowrap transition-colors"
             >
               <MessageCircle className="w-4 h-4" />
-              <span>Comunicate con #SIN FILTRO</span>
+              <span>
+                {activeProgramId === 'sin-filtro'
+                  ? 'Comunicate con #SIN FILTRO'
+                  : `Comunicate con ${showName}`}
+              </span>
             </a>
           </div>
 
-          {/* Interactive Live Giveaway / Trivia Card (only visible when active in studio) */}
+          {/* Interactive Live Giveaway / Trivia Card */}
           {viewerState?.overlays?.giveaway &&
             viewerState.overlays.giveaway.stage !== 'hidden' && (
               <div
@@ -792,7 +929,7 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
                     Participar en Comentarios
                   </button>
                   <a
-                    href={WHATSAPP_CONTACT_URL}
+                    href={whatsappContactUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="min-h-[40px] px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5"
@@ -805,17 +942,23 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
             )}
         </div>
 
-        {/* ESPACIO PUBLICITARIO (Matches Screenshot Design + WhatsApp Banner Links) */}
+        {/* PROGRAMAS ANTERIORES — Watch & Upload Past Episodes right on the emission page */}
+        <ProgramVideosArchive
+          programId={activeProgramId}
+          programTitle={showName}
+          authToken={authToken}
+          currentUser={currentUser}
+          onRequestAuth={onRequestAuth || (() => {})}
+        />
+
+        {/* ESPACIO PUBLICITARIO */}
         <section
           aria-labelledby="advertising-heading"
           className="pt-2 space-y-6"
         >
           <div className="text-center space-y-2.5 max-w-2xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#111924] border border-white/10 text-[11px] font-mono font-semibold tracking-wider text-slate-300">
-              <span className="px-1.5 py-0.5 bg-emerald-500 text-black text-[9px] font-bold rounded-sm">
-                Ad
-              </span>
-              <span>APOYO A LA COMUNICACIÓN JOVEN</span>
+            <div className="text-[11px] font-mono font-semibold tracking-[0.16em] text-emerald-400">
+              PAUTA COMERCIAL · WHATSAPP {siteWhatsappDisplay}
             </div>
 
             <h2
@@ -826,13 +969,17 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
             </h2>
 
             <p className="text-xs sm:text-sm text-slate-400">
-              Espacio disponible para comercios, marcas y emprendimientos que acompañan el programa #SinFiltro.
+              Espacio disponible para comercios, marcas y emprendimientos que acompañan el programa {showName}. Consultas directas al {siteWhatsappDisplay}.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {sponsors.map((sp, idx) => {
-              const bannerWhatsAppUrl = getSponsorWhatsAppUrl(idx + 1);
+              const bannerWhatsAppUrl = getSponsorWhatsAppUrl(
+                idx + 1,
+                cleanWaDigits,
+                showName
+              );
 
               return (
                 <article
@@ -840,7 +987,6 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
                   className="bg-[#070B08] border border-emerald-600/35 hover:border-emerald-500/60 rounded-2xl p-4 flex flex-col justify-between gap-4 transition-colors"
                 >
                   <div className="space-y-4">
-                    {/* Inner Dark Display Box */}
                     <div className="w-full aspect-[16/10] bg-[#020303] border border-white/8 rounded-xl flex flex-col items-center justify-center p-4 text-center overflow-hidden">
                       {sp.isOccupied && sp.logoUrl ? (
                         <img
@@ -872,7 +1018,6 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
                       )}
                     </div>
 
-                    {/* Sponsor Title & Description */}
                     <div className="space-y-1 px-0.5">
                       <h3 className="font-display text-base font-bold text-white leading-snug">
                         {sp.name}
@@ -883,8 +1028,7 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
                     </div>
                   </div>
 
-                  {/* Bottom Divider + WhatsApp CTA Button */}
-                  <div className="pt-3 border-t border-white/10">
+                  <div className="pt-3 border-t border-white/10 space-y-2">
                     <a
                       href={bannerWhatsAppUrl}
                       target="_blank"
@@ -894,6 +1038,11 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
                       <span>{sp.ctaText || 'Contactar para anunciar'}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </a>
+                    {!sp.isOccupied && (
+                      <div className="text-center text-[10px] font-mono text-emerald-400/90 tabular-nums">
+                        WhatsApp {siteWhatsappDisplay}
+                      </div>
+                    )}
                   </div>
                 </article>
               );
@@ -901,16 +1050,16 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
           </div>
         </section>
 
-        {/* COMUNIDAD #SINFILTRO — Comentarios del Público */}
+        {/* COMUNIDAD — Comentarios del Público */}
         <section
           ref={commentSectionRef}
           aria-labelledby="community-heading"
           className="pt-4 border-t border-emerald-500/20 space-y-6 pb-8"
         >
           <div className="text-center space-y-2.5 max-w-2xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-950/60 border border-emerald-500/35 text-[11px] font-mono font-semibold tracking-wider text-emerald-300">
+            <div className="inline-flex items-center gap-2 text-[11px] font-mono font-semibold tracking-[0.16em] text-emerald-400">
               <MessageSquare className="w-3.5 h-3.5" />
-              <span>COMUNIDAD #SINFILTRO</span>
+              <span>COMUNIDAD {showName.toUpperCase()}</span>
             </div>
 
             <h2
@@ -921,12 +1070,11 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
             </h2>
 
             <p className="text-xs sm:text-sm text-slate-400">
-              Participá de los temas del programa, dejá tus saludos para la mesa o proponé nuevos debates para la radio.
+              Participá de los temas del programa, dejá tus saludos para la mesa o proponé nuevos debates para {showName}.
             </p>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            {/* Comment Submission Form */}
             <form
               onSubmit={handleSubmitComment}
               className="lg:col-span-5 bg-[#080D0A] border border-emerald-500/25 rounded-2xl p-5 space-y-3.5"
@@ -968,7 +1116,7 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
                   required
                   value={commentMessage}
                   onChange={(e) => setCommentMessage(e.target.value)}
-                  placeholder="Escribí tu mensaje para #SinFiltro..."
+                  placeholder={`Escribí tu mensaje para ${showName}...`}
                   className="w-full px-3 py-2 bg-[#040705] border border-white/12 rounded-lg text-xs text-white placeholder:text-slate-600 resize-none focus:outline-none focus:border-emerald-500"
                 />
               </div>
@@ -991,11 +1139,10 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
               </button>
             </form>
 
-            {/* Live Comments Feed */}
             <div className="lg:col-span-7 space-y-3">
               {comments.length === 0 ? (
                 <div className="p-6 bg-[#080D0A] border border-white/10 rounded-2xl text-center text-xs text-slate-400">
-                  Sé el primero en dejar tu comentario para la mesa de #SinFiltro.
+                  Sé el primero en dejar tu comentario para la mesa de {showName}.
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[340px] overflow-y-auto pr-1">

@@ -9,7 +9,9 @@ import {
   Film,
   Home,
   LogOut,
+  Megaphone,
   Menu,
+  MessageCircle,
   Mic2,
   MonitorPlay,
   Plus,
@@ -18,7 +20,11 @@ import {
   Tv,
   X,
 } from 'lucide-react';
-import { getProducerWhatsAppUrl } from '../data/tvTemplates';
+import {
+  WHATSAPP_DISPLAY,
+  getProducerWhatsAppUrl,
+  getSponsorWhatsAppUrl,
+} from '../data/tvTemplates';
 import {
   PRODUCER_ROLES,
   ProducerProgram,
@@ -26,12 +32,17 @@ import {
   StaffUserPublic,
 } from '../types/producer';
 import { ProducerAdminPanel } from './ProducerAdminPanel';
-import { ProducerAuthModal } from './ProducerAuthModal';
 import { ProducerSiteEditor } from './ProducerSiteEditor';
+import { ProgramQuickEditModal } from './ProgramQuickEditModal';
+import { ProgramVideosArchive } from './ProgramVideosArchive';
 
 interface ProductionHouseSiteProps {
-  onOpenStudio: () => void;
-  onOpenLive: () => void;
+  authToken: string | null;
+  currentUser: StaffUserPublic | null;
+  onOpenAuth: () => void;
+  onLogout: () => void;
+  onOpenStudio: (programId?: string) => void;
+  onOpenLive: (programId?: string) => void;
 }
 
 type SiteViewState =
@@ -57,19 +68,19 @@ const FALLBACK_CONTENT: SiteContentConfig = {
   foundingDateText: '20 de noviembre de 2026',
   locationText: 'Puerto Esperanza, Misiones',
   mottoText: 'Licht, Kamera, Action!',
-  logoUrl: '/assets/aistudio/6b6ea9d5-89b9-46b8-b909-d08cfd9a986f_1965e536.png',
+  logoUrl: '/assets/aistudio/jz-logo-transparent.png',
   heroImageUrl: '/src/assets/images/hero_production_set_1795376282591.jpg',
   heroHeadline:
     'Productora audiovisual de programas con identidad propia y dirección en vivo',
   heroDescription:
     'JUGEND FÜR EINE GRÜNE ZUKUNFT nace el 20 de noviembre de 2026 para concebir, dirigir y emitir formatos propios de televisión, radio visual y documentales con estética cinematográfica y tecnología de transmisión directa en alta definición.',
   heroPrimaryCta: 'Explorar Programas',
-  heroSecondaryCta: 'Ir a la señal de #SinFiltro',
+  heroSecondaryCta: 'Ver Emisiones en Vivo',
   emblemTagline: 'Juventud por un Futuro Verde',
   emblemCategory: 'CASA PRODUCTORA',
   dossierMetrics: [
     { label: 'Fecha de nacimiento', value: '20/11/2026' },
-    { label: 'Programa inaugural', value: '#SinFiltro TV & Radio' },
+    { label: 'Formación audiovisual', value: 'TV, Radio Visual y Cine' },
     { label: 'Ingeniería de emisión', value: '1280×720 HD · 30 FPS' },
     { label: 'Frecuencia aliada', value: 'Radioactiva 88.5 FM', accent: true },
   ],
@@ -99,7 +110,7 @@ const FALLBACK_CONTENT: SiteContentConfig = {
   programsEyebrow: '02. CARTELERA Y FORMATOS ORIGINALES',
   programsTitle: 'Programas en el aire y nuevos ciclos de la productora',
   programsSubtitle:
-    'Además de #SinFiltro junto a Jóvenes de Huella Verde, nuestra casa productora impulsa nuevos ciclos y recibe propuestas para crear programas originales.',
+    'Nuestra casa productora produce ciclos propios de televisión, radio visual y documentales, y recibe propuestas para crear nuevos programas originales.',
   servicesEyebrow: '03. CAPACIDADES DE PRODUCCIÓN E INGENIERÍA PROPIA',
   servicesTitle: 'Del guion al aire en un ecosistema integrado',
   controlRoomImageUrl: '/src/assets/images/service_control_room_1795376283734.jpg',
@@ -146,9 +157,9 @@ const FALLBACK_CONTENT: SiteContentConfig = {
       index: '01',
       name: 'Auspicio en Programación Viva',
       detail:
-        'Presencia visual en los Banners 1, 2 y 3 debajo de la transmisión oficial de #SinFiltro, mención en mesa y acceso directo al WhatsApp comercial de tu comercio.',
+        'Presencia visual en los banners debajo de nuestras transmisiones oficiales, mención en vivo y acceso directo al WhatsApp comercial de tu comercio.',
       actionLabel: 'Solicitar pauta comercial',
-      topic: 'Auspicio comercial en #SinFiltro',
+      topic: 'Auspicio Comercial',
     },
     {
       index: '02',
@@ -171,8 +182,8 @@ const FALLBACK_CONTENT: SiteContentConfig = {
   contactTitle: 'Pongamos tu próximo programa en marcha',
   contactBody:
     'Escribinos para pautar en nuestros ciclos vigentes, producir un formato audiovisual nuevo o coordinar una reunión en estudio.',
-  whatsappDisplay: '+54 9 3757 65-4327',
-  whatsappNumber: '5493757654327',
+  whatsappDisplay: '+54 9 3757 30-0369',
+  whatsappNumber: '5493757300369',
   contactEmail: 'produccion@jugendgruenezukunft.com',
   footerSubline:
     'Licht, Kamera, Action! · Fundada el 20/11/2026 · Puerto Esperanza, Misiones',
@@ -230,6 +241,10 @@ const ResilientImage: React.FC<ResilientImageProps> = ({
 };
 
 export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
+  authToken,
+  currentUser,
+  onOpenAuth,
+  onLogout,
   onOpenStudio,
   onOpenLive,
 }) => {
@@ -238,21 +253,73 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
   const [programs, setPrograms] = useState<ProducerProgram[]>([]);
   const [filter, setFilter] = useState<ProgramFilter>('all');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [liveStatus, setLiveStatus] = useState<{
-    isLive: boolean;
-    audienceCount: number;
-  }>({ isLive: false, audienceCount: 36 });
+  const [liveRooms, setLiveRooms] = useState<
+    Record<string, { isLive: boolean; audienceCount: number }>
+  >({});
+  const [editingProgram, setEditingProgram] = useState<ProducerProgram | null>(
+    null
+  );
 
-  // View Stack for "Volver atrás" and "Volver al inicio" in EVERY apartado
-  const [viewHistory, setViewHistory] = useState<SiteViewState[]>([
-    { kind: 'home' },
+  const parseViewFromUrl = useCallback((): SiteViewState => {
+    if (typeof window === 'undefined') return { kind: 'home' };
+    const params = new URLSearchParams(window.location.search);
+    if (
+      params.get('live') === '1' ||
+      params.get('ver') === '1' ||
+      params.get('studio') === '1' ||
+      params.get('consola') === '1' ||
+      params.get('overlay') === '1'
+    ) {
+      return { kind: 'home' };
+    }
+    const prog = (params.get('programa') || '').trim();
+    if (prog) {
+      return { kind: 'program-detail', programId: prog };
+    }
+    const sec = (params.get('apartado') || '').trim();
+    if (
+      sec === 'manifiesto' ||
+      sec === 'programas' ||
+      sec === 'servicios' ||
+      sec === 'alianzas' ||
+      sec === 'contacto' ||
+      sec === 'pedir-programa'
+    ) {
+      return { kind: 'apartado', section: sec };
+    }
+    return { kind: 'home' };
+  }, []);
+
+  // View Stack for "Volver atrás" and "Volver al inicio" synced cleanly with URL params
+  const [viewHistory, setViewHistory] = useState<SiteViewState[]>(() => [
+    parseViewFromUrl(),
   ]);
   const currentView = viewHistory[viewHistory.length - 1];
 
-  // Auth Session kept purely in React memory (never persisted to localStorage)
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authToken, setAuthToken] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<StaffUserPublic | null>(null);
+  const syncBrowserUrl = useCallback((view: SiteViewState) => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('programa');
+    url.searchParams.delete('apartado');
+    if (view.kind === 'program-detail') {
+      url.searchParams.set('programa', view.programId);
+    } else if (view.kind === 'apartado') {
+      url.searchParams.set('apartado', view.section);
+    }
+    const nextUrl = `${url.pathname}${url.search}`;
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
+      window.history.pushState({}, '', nextUrl);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const parsed = parseViewFromUrl();
+      setViewHistory((prev) => [...prev.slice(-8), parsed]);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [parseViewFromUrl]);
 
   // Contact Inquiry Form State
   const [name, setName] = useState('');
@@ -293,15 +360,22 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
       })
       .catch(() => {});
 
-    fetch('/api/broadcast/state')
+    fetch('/api/broadcast/rooms')
       .then((res) => res.json())
       .then((data) => {
-        if (data?.state) {
-          setLiveStatus({
-            isLive: Boolean(data.state.isLive),
-            audienceCount:
-              typeof data.audienceCount === 'number' ? data.audienceCount : 36,
-          });
+        if (data?.ok && Array.isArray(data.rooms)) {
+          const map: Record<string, { isLive: boolean; audienceCount: number }> =
+            {};
+          data.rooms.forEach(
+            (rm: { programId: string; isLive: boolean; audienceCount: number }) => {
+              map[rm.programId] = {
+                isLive: Boolean(rm.isLive),
+                audienceCount:
+                  typeof rm.audienceCount === 'number' ? rm.audienceCount : 36,
+              };
+            }
+          );
+          setLiveRooms(map);
         }
       })
       .catch(() => {});
@@ -311,26 +385,35 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     loadSiteData();
   }, [loadSiteData]);
 
-  const pushView = useCallback((next: SiteViewState) => {
-    setMobileMenuOpen(false);
-    setViewHistory((prev) => [...prev, next]);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  const pushView = useCallback(
+    (next: SiteViewState) => {
+      setMobileMenuOpen(false);
+      setViewHistory((prev) => [...prev, next]);
+      syncBrowserUrl(next);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [syncBrowserUrl]
+  );
 
   const goBack = useCallback(() => {
-    setViewHistory((prev) => (prev.length > 1 ? prev.slice(0, -1) : [{ kind: 'home' }]));
+    setViewHistory((prev) => {
+      const nextStack = prev.length > 1 ? prev.slice(0, -1) : [{ kind: 'home' } as SiteViewState];
+      syncBrowserUrl(nextStack[nextStack.length - 1]);
+      return nextStack;
+    });
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  }, [syncBrowserUrl]);
 
   const goHome = useCallback(() => {
     setMobileMenuOpen(false);
-    setViewHistory([{ kind: 'home' }]);
+    const homeView: SiteViewState = { kind: 'home' };
+    setViewHistory([homeView]);
+    syncBrowserUrl(homeView);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  }, [syncBrowserUrl]);
 
   const handleLogout = () => {
-    setAuthToken(null);
-    setCurrentUser(null);
+    onLogout();
     setViewHistory([{ kind: 'home' }]);
   };
 
@@ -439,6 +522,12 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
   });
 
   const userPerms = currentUser ? PRODUCER_ROLES[currentUser.role] : null;
+  const canEditPrograms = Boolean(
+    userPerms &&
+      (userPerms.canCreatePrograms ||
+        userPerms.canOperateStudio ||
+        userPerms.canEditSite)
+  );
 
   // Dedicated Full-Page Views: Admin Panel or Full Site Editor
   if (currentView.kind === 'admin-panel' && authToken && currentUser) {
@@ -450,6 +539,10 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
         onProgramsUpdated={setPrograms}
         onOpenSiteEditor={() => pushView({ kind: 'site-editor' })}
         onOpenStudio={onOpenStudio}
+        onOpenLive={onOpenLive}
+        onOpenProgramApartado={(programId) =>
+          pushView({ kind: 'program-detail', programId })
+        }
         onBack={goBack}
         onHome={goHome}
       />
@@ -494,23 +587,37 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     return '';
   };
 
+  const primaryLiveProgramId =
+    programs.find((p) => p.statusKey === 'airing')?.id ||
+    programs[0]?.id ||
+    'sin-filtro';
+
   // Shared Renderers for Sections (both on Home overview and focused Apartados)
   const renderManifestoSection = (standalone = false) => (
     <section
       id="manifiesto"
       className={`max-w-[1280px] mx-auto px-4 sm:px-8 ${
-        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-24 border-b border-white/10'
+        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-28 border-b border-white/10'
       }`}
     >
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-stretch">
         <div className="lg:col-span-5">
-          <div className="h-full min-h-[320px] rounded-xl overflow-hidden border border-white/10 bg-[#0A0E10]">
+          <div className="group relative h-full min-h-[340px] rounded-2xl overflow-hidden border border-white/12 bg-[#0A0E10] shadow-2xl">
             <ResilientImage
               src={siteContent.manifestoImageUrl}
               alt="Cámara cinematográfica en rodaje de Jugend für eine grüne Zukunft"
               fallbackTitle="Equipamiento Cinematográfico"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-700"
             />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#050708] via-[#050708]/25 to-transparent" />
+            <div className="absolute bottom-5 left-5 right-5 flex items-center justify-between gap-4 border-t border-white/15 pt-4 text-xs">
+              <span className="font-mono text-emerald-400 tracking-wider">
+                UNIDAD DE RODAJE · 4K / HD
+              </span>
+              <span className="text-slate-300 font-medium">
+                Estudio Puerto Esperanza
+              </span>
+            </div>
           </div>
         </div>
 
@@ -547,9 +654,9 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
             {siteContent.manifestoPillars.map((pillar, idx) => (
               <div
                 key={idx}
-                className="py-5 grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-4"
+                className="py-5 grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-4 group hover:bg-white/[0.02] px-2 -mx-2 rounded-lg transition-colors"
               >
-                <div className="sm:col-span-4 text-sm font-semibold text-white">
+                <div className="sm:col-span-4 text-sm font-semibold text-white group-hover:text-emerald-300 transition-colors">
                   {pillar.title}
                 </div>
                 <p className="sm:col-span-8 text-sm text-slate-400 leading-relaxed">
@@ -567,7 +674,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     <section
       id="programas"
       className={`max-w-[1280px] mx-auto px-4 sm:px-8 ${
-        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-24 border-b border-white/10'
+        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-28 border-b border-white/10'
       }`}
     >
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
@@ -638,22 +745,53 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
         </div>
       </div>
 
+      {/* Direct Directory Strip — Every program has its own dedicated Apartado */}
+      {programs.length > 0 && (
+        <div className="mb-8 p-3.5 sm:p-4 bg-[#080C0E] border border-white/10 rounded-xl flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs font-mono text-emerald-400 tracking-wider">
+            APARTADOS POR PROGRAMA ({programs.length})
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {programs.map((prog) => {
+              const room = liveRooms[prog.id];
+              return (
+                <button
+                  key={prog.id}
+                  type="button"
+                  onClick={() =>
+                    pushView({ kind: 'program-detail', programId: prog.id })
+                  }
+                  className="min-h-[34px] px-3 py-1.5 bg-[#0E1412] hover:bg-emerald-950/60 border border-white/12 hover:border-emerald-500/50 rounded-lg text-xs font-medium text-slate-200 hover:text-white inline-flex items-center gap-2 cursor-pointer transition-colors"
+                >
+                  {room?.isLive && (
+                    <span className="w-1.5 h-1.5 bg-red-500 shrink-0" />
+                  )}
+                  <span>{prog.title}</span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {filteredPrograms.map((program) =>
-          program.featured ? (
+        {filteredPrograms.map((program) => {
+          const room = liveRooms[program.id];
+          return program.featured ? (
             <article
               key={program.id}
-              className="lg:col-span-12 bg-[#090D0F] border border-white/12 rounded-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 items-stretch"
+              className="group lg:col-span-12 bg-gradient-to-br from-[#0B120F] via-[#080C0E] to-[#06090B] border border-white/12 hover:border-emerald-500/35 rounded-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 items-stretch shadow-xl transition-colors"
             >
-              <div className="lg:col-span-7 relative min-h-[260px] sm:min-h-[360px] bg-black">
+              <div className="lg:col-span-7 relative min-h-[260px] sm:min-h-[360px] bg-black overflow-hidden">
                 <ResilientImage
                   src={program.imageUrl || ''}
                   alt={program.title}
                   fallbackTitle={program.title}
                   icon="mic"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-700"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
                 <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between gap-4">
                   {program.logoUrl ? (
                     <img
@@ -668,8 +806,8 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                     </span>
                   )}
                   <span className="text-xs font-mono text-slate-200 tabular-nums">
-                    {liveStatus.isLive && program.id === 'sin-filtro'
-                      ? `AL AIRE · ${liveStatus.audienceCount.toLocaleString('es-AR')} espectadores`
+                    {room?.isLive
+                      ? `AL AIRE · ${room.audienceCount.toLocaleString('es-AR')} espectadores`
                       : program.channelOrSignal || 'EMISIÓN HD'}
                   </span>
                 </div>
@@ -679,7 +817,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                 <div className="space-y-4">
                   <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2">
                     <span className="text-emerald-400 font-semibold">
-                      {program.statusLabel}
+                      {room?.isLive ? 'En vivo ahora' : program.statusLabel}
                     </span>
                     <span aria-hidden="true">·</span>
                     <span>{program.format}</span>
@@ -700,17 +838,15 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 pt-2">
-                  {program.statusKey === 'airing' && (
-                    <button
-                      type="button"
-                      onClick={onOpenLive}
-                      className="min-h-[42px] px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold rounded-lg inline-flex items-center gap-2 cursor-pointer whitespace-nowrap transition-colors"
-                    >
-                      <Radio className="w-4 h-4" />
-                      <span>Ver Transmisión</span>
-                    </button>
-                  )}
+                <div className="flex flex-wrap items-center gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => onOpenLive(program.id)}
+                    className="min-h-[42px] px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold rounded-lg inline-flex items-center gap-2 cursor-pointer whitespace-nowrap transition-colors"
+                  >
+                    <Radio className="w-4 h-4" />
+                    <span>Ver Emisión y Archivo</span>
+                  </button>
 
                   <button
                     type="button"
@@ -722,32 +858,63 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                     }
                     className="min-h-[42px] px-4 py-2 border border-white/15 hover:border-white/30 text-slate-200 hover:text-white text-xs sm:text-sm font-medium rounded-lg cursor-pointer whitespace-nowrap transition-colors"
                   >
-                    Ver Apartado del Programa
+                    Apartado y Videos
                   </button>
+
+                  {userPerms?.canOperateStudio && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenStudio(program.id)}
+                      className="min-h-[42px] px-3.5 py-2 border border-emerald-500/40 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-200 text-xs font-semibold rounded-lg inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <MonitorPlay className="w-3.5 h-3.5" />
+                      <span>Emitir</span>
+                    </button>
+                  )}
+
+                  {canEditPrograms && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingProgram(program)}
+                      className="min-h-[42px] px-3.5 py-2 border border-white/15 hover:border-white/35 text-slate-300 hover:text-white text-xs font-medium rounded-lg inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Editar</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </article>
           ) : (
             <article
               key={program.id}
-              className="lg:col-span-4 bg-[#090D0F] border border-white/10 rounded-xl overflow-hidden flex flex-col justify-between hover:border-white/25 transition-colors"
+              className="group lg:col-span-4 bg-[#090D0F] border border-white/10 hover:border-emerald-500/35 rounded-2xl overflow-hidden flex flex-col justify-between transition-colors shadow-lg"
             >
-              {program.imageUrl && (
-                <div className="aspect-[16/9] bg-black overflow-hidden border-b border-white/10">
-                  <ResilientImage
-                    src={program.imageUrl}
-                    alt={program.title}
-                    fallbackTitle={program.title}
-                    icon="tv"
-                    className="w-full h-full object-cover"
-                  />
+              <div className="relative aspect-[16/9] bg-black overflow-hidden border-b border-white/10">
+                <ResilientImage
+                  src={program.imageUrl || siteContent.heroImageUrl}
+                  alt={program.title}
+                  fallbackTitle={program.title}
+                  icon="tv"
+                  className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
+                <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between gap-2 text-[11px] font-mono">
+                  <span className="text-slate-200 truncate">
+                    {program.channelOrSignal || 'Streaming JZ'}
+                  </span>
+                  {room?.isLive && (
+                    <span className="px-2 py-0.5 bg-red-600 text-white font-bold rounded shrink-0">
+                      AL AIRE · {room.audienceCount.toLocaleString('es-AR')}
+                    </span>
+                  )}
                 </div>
-              )}
+              </div>
               <div className="p-6 flex-1 flex flex-col justify-between space-y-5">
                 <div className="space-y-3">
                   <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2">
                     <span className="text-emerald-400 font-medium">
-                      {program.statusLabel}
+                      {room?.isLive ? 'En vivo ahora' : program.statusLabel}
                     </span>
                     <span aria-hidden="true">·</span>
                     <span>{program.duration}</span>
@@ -766,7 +933,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                   </p>
                 </div>
 
-                <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-2">
+                <div className="pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
                     onClick={() =>
@@ -775,25 +942,44 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                         programId: program.id,
                       })
                     }
-                    className="min-h-[40px] text-xs font-semibold text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    className="min-h-[38px] text-xs font-semibold text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
-                    <span>Entrar al programa</span>
+                    <span>Apartado y Videos</span>
                     <ArrowUpRight className="w-4 h-4" />
                   </button>
-                  {program.statusKey === 'airing' && (
+
+                  <div className="flex items-center gap-2.5">
                     <button
                       type="button"
-                      onClick={onOpenLive}
-                      className="text-xs text-slate-300 hover:text-white underline underline-offset-4 cursor-pointer"
+                      onClick={() => onOpenLive(program.id)}
+                      className="text-xs font-medium text-slate-200 hover:text-white underline underline-offset-4 cursor-pointer"
                     >
-                      Señal en vivo
+                      Emisión
                     </button>
-                  )}
+                    {userPerms?.canOperateStudio && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenStudio(program.id)}
+                        className="text-xs font-medium text-emerald-300 hover:text-emerald-200 underline underline-offset-4 cursor-pointer"
+                      >
+                        Emitir
+                      </button>
+                    )}
+                    {canEditPrograms && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingProgram(program)}
+                        className="text-xs text-slate-400 hover:text-white underline underline-offset-4 cursor-pointer"
+                      >
+                        Editar
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </article>
-          )
-        )}
+          );
+        })}
       </div>
     </section>
   );
@@ -802,7 +988,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     <section
       id="servicios"
       className={`max-w-[1280px] mx-auto px-4 sm:px-8 ${
-        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-24 border-b border-white/10'
+        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-28 border-b border-white/10'
       }`}
     >
       <div className="flex flex-wrap items-end justify-between gap-4 mb-12">
@@ -828,9 +1014,9 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-        <div className="lg:col-span-5 bg-[#090D0F] border border-white/10 rounded-xl overflow-hidden flex flex-col justify-between">
-          <div className="aspect-[4/3] bg-black overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        <div className="lg:col-span-5 bg-gradient-to-b from-[#0C1210] to-[#080B0D] border border-white/12 rounded-2xl overflow-hidden flex flex-col justify-between shadow-xl">
+          <div className="relative aspect-[4/3] bg-black overflow-hidden">
             <ResilientImage
               src={siteContent.controlRoomImageUrl}
               alt="Sala de control maestro MesaControl TV"
@@ -838,9 +1024,10 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               icon="tv"
               className="w-full h-full object-cover"
             />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0C1210] via-transparent to-transparent" />
           </div>
-          <div className="p-6 sm:p-7 space-y-4 flex-1 flex flex-col justify-between">
-            <div className="space-y-2.5">
+          <div className="p-6 sm:p-8 space-y-5 flex-1 flex flex-col justify-between">
+            <div className="space-y-3">
               <div className="text-xs font-mono text-emerald-400">
                 {siteContent.controlRoomEyebrow}
               </div>
@@ -852,39 +1039,61 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={onOpenStudio}
-              className="min-h-[42px] px-5 py-2.5 bg-white text-black hover:bg-slate-200 text-xs sm:text-sm font-semibold rounded-lg inline-flex items-center justify-center gap-2 cursor-pointer transition-colors self-start whitespace-nowrap"
-            >
-              <MonitorPlay className="w-4 h-4" />
-              <span>Abrir Consola del Estudio</span>
-            </button>
+            {userPerms?.canOperateStudio ? (
+              <button
+                type="button"
+                onClick={() => onOpenStudio()}
+                className="min-h-[42px] px-5 py-2.5 bg-white text-black hover:bg-slate-200 text-xs sm:text-sm font-semibold rounded-lg inline-flex items-center justify-center gap-2 cursor-pointer transition-colors self-start whitespace-nowrap"
+              >
+                <MonitorPlay className="w-4 h-4" />
+                <span>Abrir Consola del Estudio</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  pushView({ kind: 'apartado', section: 'pedir-programa' })
+                }
+                className="min-h-[42px] px-5 py-2.5 border border-emerald-500/45 bg-emerald-950/40 hover:bg-emerald-600 text-emerald-200 hover:text-white text-xs sm:text-sm font-semibold rounded-lg inline-flex items-center justify-center gap-2 cursor-pointer transition-colors self-start whitespace-nowrap"
+              >
+                <Clapperboard className="w-4 h-4" />
+                <span>Proponer un Programa en Estudio</span>
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6">
-          {siteContent.capabilities.map((cap) => (
-            <div
-              key={cap.index}
-              className="bg-[#090D0F] border border-white/10 rounded-xl p-6 flex flex-col justify-between space-y-5"
-            >
-              <div className="space-y-3">
-                <span className="font-mono text-xs text-emerald-400 tabular-nums">
-                  {cap.index}.
-                </span>
-                <h3 className="text-lg font-semibold text-white leading-snug">
-                  {cap.title}
-                </h3>
-                <p className="text-sm text-slate-400 leading-relaxed">
-                  {cap.description}
-                </p>
+        {/* Asymmetric Editorial Bento Grid for Production Capabilities */}
+        <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-12 gap-5">
+          {siteContent.capabilities.map((cap, idx) => {
+            const spanClass =
+              idx === 0 || idx === 3 ? 'sm:col-span-7' : 'sm:col-span-5';
+            const surfaceClass =
+              idx === 0
+                ? 'bg-gradient-to-br from-[#0B1510] to-[#080B0D] border-emerald-500/25'
+                : 'bg-[#090D0F] border-white/10 hover:border-white/25';
+            return (
+              <div
+                key={cap.index}
+                className={`${spanClass} ${surfaceClass} border rounded-2xl p-6 flex flex-col justify-between space-y-5 transition-colors`}
+              >
+                <div className="space-y-3">
+                  <span className="font-mono text-xs text-emerald-400 tabular-nums">
+                    {cap.index}.
+                  </span>
+                  <h3 className="text-lg font-semibold text-white leading-snug">
+                    {cap.title}
+                  </h3>
+                  <p className="text-sm text-slate-400 leading-relaxed">
+                    {cap.description}
+                  </p>
+                </div>
+                <div className="pt-3 border-t border-white/10 text-xs text-slate-300">
+                  {cap.deliverable}
+                </div>
               </div>
-              <div className="pt-3 border-t border-white/10 text-xs text-slate-300">
-                {cap.deliverable}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
@@ -894,7 +1103,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     <section
       id="alianzas"
       className={`max-w-[1280px] mx-auto px-4 sm:px-8 ${
-        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-24 border-b border-white/10'
+        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-28 border-b border-white/10'
       }`}
     >
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 mb-12 items-end">
@@ -927,7 +1136,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
         {siteContent.partnershipModels.map((item) => (
           <div
             key={item.index}
-            className="bg-[#090D0F] border border-white/10 rounded-xl p-6 sm:p-7 flex flex-col justify-between space-y-6"
+            className="bg-[#090D0F] border border-white/10 hover:border-emerald-500/35 rounded-2xl p-6 sm:p-7 flex flex-col justify-between space-y-6 transition-colors"
           >
             <div className="space-y-3">
               <div className="text-xs font-mono text-emerald-400 tabular-nums">
@@ -959,7 +1168,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     <section
       id="contacto"
       className={`max-w-[1280px] mx-auto px-4 sm:px-8 ${
-        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-24'
+        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-28'
       }`}
     >
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start">
@@ -997,7 +1206,10 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                 Atención directa por WhatsApp
               </div>
               <a
-                href={getProducerWhatsAppUrl(projectType)}
+                href={getProducerWhatsAppUrl(
+                  projectType,
+                  siteContent.whatsappNumber
+                )}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-medium mt-0.5"
@@ -1086,8 +1298,8 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                   <option value="Producción de Programa">
                     Producción de Programa
                   </option>
-                  <option value="Auspicio comercial en #SinFiltro">
-                    Auspicio comercial en #SinFiltro
+                  <option value="Auspicio Comercial">
+                    Auspicio Comercial
                   </option>
                   <option value="Producción de programa propio">
                     Producción de programa propio
@@ -1149,12 +1361,15 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               </button>
 
               <a
-                href={getProducerWhatsAppUrl(projectType)}
+                href={getProducerWhatsAppUrl(
+                  projectType,
+                  siteContent.whatsappNumber
+                )}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-slate-400 hover:text-white underline underline-offset-4 whitespace-nowrap"
+                className="text-xs text-emerald-400 hover:text-emerald-300 underline underline-offset-4 whitespace-nowrap font-mono"
               >
-                Escribir directo por WhatsApp
+                WhatsApp {siteContent.whatsappDisplay || WHATSAPP_DISPLAY}
               </a>
             </div>
           </form>
@@ -1375,80 +1590,224 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
       );
     }
 
+    const room = liveRooms[program.id];
+    const waNumber = siteContent.whatsappNumber || '5493757300369';
+    const waDisplay = siteContent.whatsappDisplay || WHATSAPP_DISPLAY;
+
     return (
-      <section className="max-w-[1100px] mx-auto px-4 sm:px-8 py-12 lg:py-16 space-y-8">
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-8 py-10 lg:py-14 space-y-8">
+        {/* Program Apartado Switcher Strip */}
+        {programs.length > 1 && (
+          <div className="p-3 bg-[#090D0F] border border-white/10 rounded-xl flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-mono text-emerald-400 pr-2">
+              APARTADOS DE PROGRAMAS:
+            </span>
+            {programs.map((item) => {
+              const active = item.id === program.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() =>
+                    pushView({ kind: 'program-detail', programId: item.id })
+                  }
+                  className={`min-h-[34px] px-3 py-1 rounded-lg font-medium cursor-pointer transition-colors ${
+                    active
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  {item.title}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Program Hero Showcase */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-          <div className="lg:col-span-6 rounded-xl overflow-hidden border border-white/12 bg-black min-h-[280px]">
+          <div className="lg:col-span-6 rounded-2xl overflow-hidden border border-white/12 bg-black min-h-[300px] relative shadow-2xl">
             <ResilientImage
-              src={program.imageUrl || ''}
+              src={program.imageUrl || siteContent.heroImageUrl}
               alt={program.title}
               fallbackTitle={program.title}
               icon="tv"
               className="w-full h-full object-cover"
             />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent" />
+            <div className="absolute top-4 left-4 right-4 flex items-center justify-between gap-2">
+              <span
+                className={`px-3 py-1 text-xs font-mono font-bold rounded-md ${
+                  room?.isLive
+                    ? 'bg-red-600 text-white'
+                    : 'bg-black/75 border border-white/15 text-emerald-300'
+                }`}
+              >
+                {room?.isLive
+                  ? `EN VIVO · ${room.audienceCount.toLocaleString('es-AR')} espectadores`
+                  : program.statusLabel}
+              </span>
+              {program.channelOrSignal && (
+                <span className="px-2.5 py-1 bg-black/75 border border-white/12 rounded-md text-[11px] font-mono text-slate-200">
+                  {program.channelOrSignal}
+                </span>
+              )}
+            </div>
+
+            {program.logoUrl && (
+              <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between gap-4">
+                <img
+                  src={program.logoUrl}
+                  alt={`Logo ${program.title}`}
+                  referrerPolicy="no-referrer"
+                  className="h-14 sm:h-16 w-auto object-contain drop-shadow-[0_6px_18px_rgba(0,0,0,0.85)]"
+                />
+              </div>
+            )}
           </div>
 
           <div className="lg:col-span-6 flex flex-col justify-between space-y-6">
             <div className="space-y-4">
-              <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2">
-                <span className="text-emerald-400 font-semibold">
-                  {program.statusLabel}
-                </span>
-                <span aria-hidden="true">·</span>
-                <span>{program.format}</span>
-                <span aria-hidden="true">·</span>
-                <span>{program.duration}</span>
+              <div className="text-xs font-mono text-emerald-400 tracking-wider">
+                APARTADO OFICIAL · {program.format.toUpperCase()}
               </div>
 
               <h1 className="font-cinema text-3xl sm:text-4xl font-semibold text-white">
                 {program.title}
               </h1>
 
-              <p className="text-xs font-mono text-slate-300">
-                {program.schedule}
-                {program.hostTeam ? ` · ${program.hostTeam}` : ''}
-              </p>
-
               <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
                 {program.fullSynopsis}
               </p>
+
+              {/* Editorial Info Dossier */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-xs">
+                <div className="p-3 bg-[#090D0F] border border-white/10 rounded-xl">
+                  <div className="text-slate-400">Emisión y horario</div>
+                  <div className="mt-1 font-medium text-white">
+                    {program.schedule}
+                  </div>
+                </div>
+                <div className="p-3 bg-[#090D0F] border border-white/10 rounded-xl">
+                  <div className="text-slate-400">Duración</div>
+                  <div className="mt-1 font-medium text-white">
+                    {program.duration}
+                  </div>
+                </div>
+                <div className="p-3 bg-[#090D0F] border border-white/10 rounded-xl">
+                  <div className="text-slate-400">Equipo responsable</div>
+                  <div className="mt-1 font-medium text-white">
+                    {program.hostTeam || 'Equipo de Producción JZ'}
+                  </div>
+                </div>
+                <div className="p-3 bg-[#090D0F] border border-white/10 rounded-xl">
+                  <div className="text-slate-400">Señal oficial</div>
+                  <div className="mt-1 font-medium text-emerald-300">
+                    {program.channelOrSignal || 'Streaming HD JZ'}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              {program.statusKey === 'airing' && (
-                <button
-                  type="button"
-                  onClick={onOpenLive}
-                  className="min-h-[42px] px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-2 cursor-pointer"
-                >
-                  <Radio className="w-4 h-4" />
-                  <span>Ver Transmisión en Vivo</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => onOpenLive(program.id)}
+                className="min-h-[42px] px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg inline-flex items-center gap-2 cursor-pointer"
+              >
+                <Radio className="w-4 h-4" />
+                <span>Ver Emisión en Vivo</span>
+              </button>
+
               {userPerms?.canOperateStudio && (
                 <button
                   type="button"
-                  onClick={onOpenStudio}
+                  onClick={() => onOpenStudio(program.id)}
                   className="min-h-[42px] px-4 py-2 border border-white/15 hover:border-white/30 text-white text-sm font-medium rounded-lg inline-flex items-center gap-2 cursor-pointer"
                 >
                   <MonitorPlay className="w-4 h-4" />
-                  <span>Abrir Estudio TV</span>
+                  <span>Emitir este Programa</span>
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() =>
-                  handleSelectPartnershipTopic(`Auspicio en ${program.title}`)
-                }
-                className="min-h-[42px] px-4 py-2 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/50 text-sm font-medium rounded-lg cursor-pointer"
+
+              {canEditPrograms && (
+                <button
+                  type="button"
+                  onClick={() => setEditingProgram(program)}
+                  className="min-h-[42px] px-4 py-2 border border-white/15 hover:border-white/30 text-slate-200 text-sm font-medium rounded-lg inline-flex items-center gap-2 cursor-pointer"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  <span>Editar Programa</span>
+                </button>
+              )}
+
+              <a
+                href={getProducerWhatsAppUrl(
+                  `Auspicio o contacto en ${program.title}`,
+                  waNumber
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-h-[42px] px-4 py-2 border border-emerald-500/45 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-200 text-sm font-medium rounded-lg inline-flex items-center gap-2"
               >
-                Auspicios y Pauta
-              </button>
+                <MessageCircle className="w-4 h-4" />
+                <span>WhatsApp {waDisplay}</span>
+              </a>
             </div>
           </div>
         </div>
 
-        <div className="bg-[#090D0F] border border-white/10 rounded-xl p-6 sm:p-8 space-y-4">
+        {/* Dedicated Sponsorship Block for This Program */}
+        <div className="bg-gradient-to-br from-[#0A130F] to-[#080B0D] border border-emerald-500/25 rounded-2xl p-6 sm:p-7 space-y-5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs font-mono text-emerald-400">
+                <Megaphone className="w-4 h-4" />
+                <span>ESPACIO COMERCIAL DEL PROGRAMA</span>
+              </div>
+              <h2 className="font-cinema text-xl sm:text-2xl font-semibold text-white">
+                Auspiciá en {program.title}
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300">
+                Solicitá tu banner en pantalla o mención en vivo comunicándote directo al {waDisplay}.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                handleSelectPartnershipTopic(`Auspicio en ${program.title}`)
+              }
+              className="min-h-[40px] px-4 py-2 border border-white/15 hover:border-emerald-500/50 text-xs font-semibold text-slate-200 hover:text-white rounded-lg cursor-pointer shrink-0 self-start md:self-auto"
+            >
+              Enviar consulta por formulario
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map((slotNum) => (
+              <a
+                key={slotNum}
+                href={getSponsorWhatsAppUrl(slotNum, waNumber, program.title)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-4 bg-[#06090B] hover:bg-[#0B1410] border border-white/10 hover:border-emerald-500/50 rounded-xl flex items-center justify-between gap-3 transition-colors"
+              >
+                <div>
+                  <div className="text-xs font-mono font-bold text-emerald-400">
+                    BANNER {slotNum} · {program.title}
+                  </div>
+                  <div className="text-xs text-slate-300 mt-1">
+                    Pedir espacio por WhatsApp ({waDisplay})
+                  </div>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-emerald-400 shrink-0" />
+              </a>
+            ))}
+          </div>
+        </div>
+
+        {/* Technical Specs */}
+        <div className="bg-[#090D0F] border border-white/10 rounded-2xl p-6 sm:p-8 space-y-4">
           <div className="text-xs font-mono text-emerald-400">
             ESPECIFICACIONES TÉCNICAS DE REALIZACIÓN
           </div>
@@ -1464,6 +1823,15 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Past Episodes Video Archive for this Program */}
+        <ProgramVideosArchive
+          programId={program.id}
+          programTitle={program.title}
+          authToken={authToken}
+          currentUser={currentUser}
+          onRequestAuth={onOpenAuth}
+        />
       </section>
     );
   };
@@ -1527,7 +1895,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
             ) : (
               <button
                 type="button"
-                onClick={() => setAuthModalOpen(true)}
+                onClick={onOpenAuth}
                 className="min-h-[40px] px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Iniciar Sesión
@@ -1623,7 +1991,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               {userPerms.canOperateStudio && (
                 <button
                   type="button"
-                  onClick={onOpenStudio}
+                  onClick={() => onOpenStudio()}
                   className="min-h-[34px] px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-md inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                 >
                   <MonitorPlay className="w-3.5 h-3.5" />
@@ -1688,29 +2056,39 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                   fallbackTitle="Estudio Principal"
                   className="w-full h-full object-cover opacity-35"
                 />
-                <div className="absolute inset-0 bg-gradient-to-b from-[#050708]/85 via-[#050708]/75 to-[#050708]" />
-                <div className="absolute inset-0 bg-gradient-to-r from-[#050708] via-[#050708]/70 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-b from-[#050708]/88 via-[#050708]/72 to-[#050708]" />
+                <div className="absolute inset-0 bg-gradient-to-r from-[#050708] via-[#050708]/75 to-transparent" />
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background:
+                      'radial-gradient(ellipse 68% 58% at 76% 42%, rgba(16, 185, 129, 0.14), transparent 72%)',
+                  }}
+                />
               </div>
 
               <div className="relative max-w-[1280px] mx-auto px-4 sm:px-8 pt-14 pb-16 lg:pt-20 lg:pb-24">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-stretch">
                   <div className="lg:col-span-7 flex flex-col justify-center space-y-6">
-                    <p className="text-xs sm:text-sm text-slate-300 tracking-wide">
-                      <span>Fundada el {siteContent.foundingDateText}</span>
-                      <span aria-hidden="true" className="mx-2 text-emerald-500">
-                        ·
-                      </span>
-                      <span>{siteContent.locationText}</span>
-                      <span aria-hidden="true" className="mx-2 text-emerald-500">
-                        ·
-                      </span>
-                      <span className="font-cinema text-slate-200">
-                        {siteContent.mottoText}
-                      </span>
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <span className="h-px w-8 bg-emerald-500/80" />
+                      <p className="text-xs sm:text-sm text-slate-300 tracking-wide">
+                        <span>Fundada el {siteContent.foundingDateText}</span>
+                        <span aria-hidden="true" className="mx-2 text-emerald-500">
+                          ·
+                        </span>
+                        <span>{siteContent.locationText}</span>
+                        <span aria-hidden="true" className="mx-2 text-emerald-500">
+                          ·
+                        </span>
+                        <span className="font-cinema text-slate-100">
+                          {siteContent.mottoText}
+                        </span>
+                      </p>
+                    </div>
 
                     <h1
-                      className="font-cinema font-semibold text-white leading-[1.1] tracking-tight"
+                      className="font-cinema font-semibold text-white leading-[1.08] tracking-tight"
                       style={{
                         fontSize: 'clamp(2.25rem, 4.1vw, 3.75rem)',
                         textWrap: 'balance',
@@ -1729,7 +2107,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                         onClick={() =>
                           pushView({ kind: 'apartado', section: 'programas' })
                         }
-                        className="min-h-[44px] px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg transition-colors inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+                        className="min-h-[46px] px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-emerald-950/60 transition-colors inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         <span>{siteContent.heroPrimaryCta}</span>
                         <ArrowRight className="w-4 h-4" />
@@ -1743,7 +2121,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                             section: 'pedir-programa',
                           })
                         }
-                        className="min-h-[44px] px-5 py-2.5 border border-white/20 hover:border-emerald-500/60 text-slate-100 hover:text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+                        className="min-h-[46px] px-5 py-2.5 border border-white/20 hover:border-emerald-500/60 bg-white/[0.03] text-slate-100 hover:text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         <Plus className="w-4 h-4 text-emerald-400" />
                         <span>Pedir Crear un Programa</span>
@@ -1751,8 +2129,8 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
 
                       <button
                         type="button"
-                        onClick={onOpenLive}
-                        className="min-h-[44px] px-3 py-2 text-sm font-medium text-slate-200 hover:text-white underline underline-offset-8 decoration-white/30 hover:decoration-emerald-500 transition-colors inline-flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
+                        onClick={() => onOpenLive(primaryLiveProgramId)}
+                        className="min-h-[46px] px-3 py-2 text-sm font-medium text-slate-200 hover:text-white underline underline-offset-8 decoration-white/30 hover:decoration-emerald-500 transition-colors inline-flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
                       >
                         <Radio className="w-4 h-4 text-emerald-400" />
                         <span>{siteContent.heroSecondaryCta}</span>
@@ -1760,12 +2138,20 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                     </div>
                   </div>
 
-                  {/* Official JZ Logo Stage */}
+                  {/* Official JZ Logo Stage — Dark Obsidian Cinema Emblem without White Box */}
                   <div className="lg:col-span-5 flex items-center justify-center">
-                    <div className="w-full h-full min-h-[280px] sm:min-h-[340px] bg-black border border-white/10 rounded-xl p-6 sm:p-8 flex flex-col items-center justify-between gap-5">
-                      <div className="w-full flex items-center justify-between text-xs text-slate-400 font-mono">
+                    <div
+                      className="relative w-full h-full min-h-[320px] sm:min-h-[380px] border border-emerald-500/25 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-between gap-5 shadow-[0_24px_70px_-20px_rgba(16,185,129,0.22)] overflow-hidden"
+                      style={{
+                        background:
+                          'radial-gradient(circle at 50% 44%, rgba(16, 185, 129, 0.16) 0%, rgba(10, 15, 13, 0.96) 58%, #050807 100%)',
+                      }}
+                    >
+                      <div className="w-full flex items-center justify-between text-[11px] text-slate-400 font-mono tracking-wider">
                         <span>IDENTIDAD OFICIAL</span>
-                        <span className="tabular-nums">EST. 20 / 11 / 2026</span>
+                        <span className="tabular-nums text-emerald-400">
+                          EST. 20 / 11 / 2026
+                        </span>
                       </div>
 
                       <div className="w-full flex-1 flex items-center justify-center py-2">
@@ -1773,11 +2159,11 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                           src={siteContent.logoUrl}
                           alt={`Logotipo oficial ${siteContent.brandName}`}
                           referrerPolicy="no-referrer"
-                          className="w-full max-w-[420px] h-auto object-contain select-none"
+                          className="w-full max-w-[420px] h-auto max-h-[250px] object-contain select-none drop-shadow-[0_14px_34px_rgba(0,0,0,0.85)]"
                         />
                       </div>
 
-                      <div className="w-full pt-4 border-t border-white/10 flex items-center justify-between gap-4 text-xs text-slate-400">
+                      <div className="w-full pt-3.5 border-t border-white/10 flex items-center justify-between gap-4 text-xs text-slate-300">
                         <span>{siteContent.emblemTagline}</span>
                         <span className="font-mono text-emerald-400 tabular-nums">
                           {siteContent.emblemCategory}
@@ -1789,7 +2175,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               </div>
 
               {/* 4-Column Founding Dossier Strip */}
-              <div className="relative border-t border-white/10 bg-[#080B0D]/90">
+              <div className="relative border-t border-white/10 bg-[#080B0D]/95">
                 <div className="max-w-[1280px] mx-auto px-4 sm:px-8 grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-white/10">
                   {siteContent.dossierMetrics.map((m, idx) => (
                     <div
@@ -1875,29 +2261,32 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
             </button>
             <button
               type="button"
-              onClick={onOpenLive}
+              onClick={() => onOpenLive(primaryLiveProgramId)}
               className="hover:text-white transition-colors cursor-pointer"
             >
-              Señal #SinFiltro
+              Emisiones en Vivo
             </button>
-            <button
-              type="button"
-              onClick={onOpenStudio}
-              className="hover:text-emerald-400 text-slate-300 font-medium transition-colors cursor-pointer"
-            >
-              Consola MesaControl TV
-            </button>
+            {userPerms?.canOperateStudio && (
+              <button
+                type="button"
+                onClick={() => onOpenStudio()}
+                className="hover:text-emerald-400 text-emerald-300 font-medium transition-colors cursor-pointer"
+              >
+                Estudio en Vivo
+              </button>
+            )}
           </div>
         </div>
       </footer>
 
-      <ProducerAuthModal
-        open={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        onAuthenticated={(token, user) => {
-          setAuthToken(token);
-          setCurrentUser(user);
-          pushView({ kind: 'admin-panel' });
+      <ProgramQuickEditModal
+        open={Boolean(editingProgram)}
+        program={editingProgram}
+        authToken={authToken}
+        onClose={() => setEditingProgram(null)}
+        onRequestAuth={onOpenAuth}
+        onSaved={(_updated, allPrograms) => {
+          setPrograms(allPrograms);
         }}
       />
     </div>

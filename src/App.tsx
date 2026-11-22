@@ -10,6 +10,7 @@ import {
   Gift,
   Home,
   Layers,
+  Lock,
   Megaphone,
   MessageSquare,
   Play,
@@ -20,6 +21,7 @@ import {
   Square,
   Tv,
   Type,
+  Upload,
   UserCheck,
   Users,
 } from 'lucide-react';
@@ -37,7 +39,9 @@ import {
   OVERLAY_STORAGE_KEY,
   OverlayBrowserSource,
 } from './components/OverlayBrowserSource';
+import { ProducerAuthModal } from './components/ProducerAuthModal';
 import { ProductionHouseSite } from './components/ProductionHouseSite';
+import { ProgramQuickEditModal } from './components/ProgramQuickEditModal';
 import { SponsorManagerPanel } from './components/SponsorManagerPanel';
 import { TemplateStudioPanel } from './components/TemplateStudioPanel';
 import { TouchDeckPanel } from './components/TouchDeckPanel';
@@ -47,6 +51,7 @@ import {
   DEFAULT_GUEST_BADGES,
   DEFAULT_SPONSOR_BANNERS,
   DEFAULT_TV_TITLES,
+  OFFICIAL_PRODUCER_LOGO,
   OFFICIAL_SINFILTRO_LOGO,
   TV_SHOW_TEMPLATES,
 } from './data/tvTemplates';
@@ -74,6 +79,11 @@ import {
   TvTitlePreset,
   ViewerComment,
 } from './types/broadcast';
+import {
+  PRODUCER_ROLES,
+  ProducerProgram,
+  StaffUserPublic,
+} from './types/producer';
 
 type StudioModuleTab = 'titles' | 'guests' | 'giveaway' | 'comments' | 'sponsors';
 
@@ -135,79 +145,209 @@ function formatSecondsToHms(totalSeconds: number): string {
 
 type AppRouteMode = 'site' | 'studio' | 'live' | 'overlay';
 
-function getRouteModeFromSearch(search: string): AppRouteMode {
+interface AppRouteState {
+  mode: AppRouteMode;
+  programId: string;
+}
+
+function getRouteStateFromSearch(search: string): AppRouteState {
   const params = new URLSearchParams(search);
-  if (params.get('overlay') === '1') return 'overlay';
-  if (params.get('live') === '1' || params.get('ver') === '1') return 'live';
-  if (params.get('studio') === '1' || params.get('consola') === '1') return 'studio';
-  return 'site';
+  const rawProgram = (params.get('program') || 'sin-filtro').trim() || 'sin-filtro';
+  if (params.get('overlay') === '1') {
+    return { mode: 'overlay', programId: rawProgram };
+  }
+  if (params.get('live') === '1' || params.get('ver') === '1') {
+    return { mode: 'live', programId: rawProgram };
+  }
+  if (params.get('studio') === '1' || params.get('consola') === '1') {
+    return { mode: 'studio', programId: rawProgram };
+  }
+  return { mode: 'site', programId: rawProgram };
 }
 
 export default function App() {
-  const [routeMode, setRouteMode] = useState<AppRouteMode>(() =>
+  const [routeState, setRouteState] = useState<AppRouteState>(() =>
     typeof window !== 'undefined'
-      ? getRouteModeFromSearch(window.location.search)
-      : 'site'
+      ? getRouteStateFromSearch(window.location.search)
+      : { mode: 'site', programId: 'sin-filtro' }
   );
+
+  // Staff auth session kept strictly in React memory (never persisted in localStorage)
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<StaffUserPublic | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   useEffect(() => {
     const onPopState = () => {
-      setRouteMode(getRouteModeFromSearch(window.location.search));
+      setRouteState(getRouteStateFromSearch(window.location.search));
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  const navigateRoute = useCallback((next: AppRouteMode) => {
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      url.searchParams.delete('overlay');
-      url.searchParams.delete('live');
-      url.searchParams.delete('ver');
-      url.searchParams.delete('studio');
-      url.searchParams.delete('consola');
-      if (next === 'studio') url.searchParams.set('studio', '1');
-      else if (next === 'live') url.searchParams.set('live', '1');
-      else if (next === 'overlay') url.searchParams.set('overlay', '1');
-      window.history.pushState({}, '', `${url.pathname}${url.search}`);
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    }
-    setRouteMode(next);
-  }, []);
+  const navigateRoute = useCallback(
+    (nextMode: AppRouteMode, nextProgramId?: string, apartadoProgramId?: string) => {
+      const targetProgram =
+        (typeof nextProgramId === 'string' && nextProgramId.trim()) ||
+        routeState.programId ||
+        'sin-filtro';
 
-  if (routeMode === 'overlay') {
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('overlay');
+        url.searchParams.delete('live');
+        url.searchParams.delete('ver');
+        url.searchParams.delete('studio');
+        url.searchParams.delete('consola');
+        url.searchParams.delete('program');
+        url.searchParams.delete('programa');
+        url.searchParams.delete('apartado');
+        if (nextMode === 'studio') {
+          url.searchParams.set('studio', '1');
+          url.searchParams.set('program', targetProgram);
+        } else if (nextMode === 'live') {
+          url.searchParams.set('live', '1');
+          url.searchParams.set('program', targetProgram);
+        } else if (nextMode === 'overlay') {
+          url.searchParams.set('overlay', '1');
+        } else if (apartadoProgramId) {
+          url.searchParams.set('programa', apartadoProgramId);
+        }
+        window.history.pushState({}, '', `${url.pathname}${url.search}`);
+        window.scrollTo({ top: 0, behavior: 'auto' });
+      }
+      setRouteState({ mode: nextMode, programId: targetProgram });
+    },
+    [routeState.programId]
+  );
+
+  const authModalElement = (
+    <ProducerAuthModal
+      open={authModalOpen}
+      onClose={() => setAuthModalOpen(false)}
+      onAuthenticated={(token, user) => {
+        setAuthToken(token);
+        setCurrentUser(user);
+      }}
+    />
+  );
+
+  if (routeState.mode === 'overlay') {
     return <OverlayBrowserSource />;
   }
 
-  if (routeMode === 'live') {
+  if (routeState.mode === 'live') {
     return (
-      <LiveViewerPage
-        onBack={() => {
-          if (window.history.length > 1) window.history.back();
-          else navigateRoute('site');
-        }}
-        onHome={() => navigateRoute('site')}
-      />
+      <>
+        <LiveViewerPage
+          programId={routeState.programId}
+          authToken={authToken}
+          currentUser={currentUser}
+          onRequestAuth={() => setAuthModalOpen(true)}
+          onSelectProgram={(pid) => navigateRoute('live', pid)}
+          onOpenApartado={(pid) => navigateRoute('site', pid, pid)}
+          onBack={() => {
+            if (window.history.length > 1) window.history.back();
+            else navigateRoute('site');
+          }}
+          onHome={() => navigateRoute('site')}
+        />
+        {authModalElement}
+      </>
     );
   }
 
-  if (routeMode === 'studio') {
+  if (routeState.mode === 'studio') {
+    const canOperateStudio = Boolean(
+      authToken &&
+        currentUser &&
+        PRODUCER_ROLES[currentUser.role]?.canOperateStudio
+    );
+    if (!canOperateStudio) {
+      return (
+        <>
+          <div className="min-h-screen bg-[#050708] text-slate-100 flex items-center justify-center p-6">
+            <div className="max-w-md w-full bg-[#090D0F] border border-white/12 rounded-2xl p-7 space-y-5 text-center shadow-2xl">
+              <div className="w-12 h-12 rounded-xl bg-emerald-950/70 border border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-400">
+                <Lock className="w-6 h-6" />
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-mono text-emerald-400 tracking-wider">
+                  ACCESO RESTRINGIDO · ESTUDIO EN VIVO
+                </p>
+                <h1 className="font-cinema text-2xl font-semibold text-white">
+                  Estudio exclusivo para personal autorizado
+                </h1>
+                <p className="text-sm text-slate-400 leading-relaxed">
+                  {currentUser
+                    ? `Tu rol (${PRODUCER_ROLES[currentUser.role]?.label || currentUser.role}) no tiene autorización para abrir la consola de emisión.`
+                    : 'Solo el administrador total y los usuarios autorizados pueden ingresar al estudio de emisión en vivo.'}
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
+                {!currentUser && (
+                  <button
+                    type="button"
+                    onClick={() => setAuthModalOpen(true)}
+                    className="w-full sm:w-auto min-h-[42px] px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg cursor-pointer"
+                  >
+                    Iniciar Sesión Autorizada
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => navigateRoute('site')}
+                  className="w-full sm:w-auto min-h-[42px] px-5 py-2 border border-white/15 hover:border-white/30 text-slate-200 text-sm font-medium rounded-lg cursor-pointer"
+                >
+                  Volver al Inicio
+                </button>
+              </div>
+            </div>
+          </div>
+          {authModalElement}
+        </>
+      );
+    }
+
     return (
-      <ControlConsole
-        onBack={() => {
-          if (window.history.length > 1) window.history.back();
-          else navigateRoute('site');
-        }}
-        onBackToSite={() => navigateRoute('site')}
-      />
+      <>
+        <ControlConsole
+          initialProgramId={routeState.programId}
+          authToken={authToken}
+          currentUser={currentUser}
+          onOpenAuth={() => setAuthModalOpen(true)}
+          onChangeProgramRoute={(pid) => navigateRoute('studio', pid)}
+          onOpenLive={(pid) => navigateRoute('live', pid)}
+          onBack={() => {
+            if (window.history.length > 1) window.history.back();
+            else navigateRoute('site');
+          }}
+          onBackToSite={() => navigateRoute('site')}
+        />
+        {authModalElement}
+      </>
     );
   }
 
   return (
-    <ProductionHouseSite
-      onOpenStudio={() => navigateRoute('studio')}
-      onOpenLive={() => navigateRoute('live')}
-    />
+    <>
+      <ProductionHouseSite
+        authToken={authToken}
+        currentUser={currentUser}
+        onOpenAuth={() => setAuthModalOpen(true)}
+        onLogout={() => {
+          setAuthToken(null);
+          setCurrentUser(null);
+        }}
+        onOpenStudio={(programId) =>
+          navigateRoute('studio', programId || 'sin-filtro')
+        }
+        onOpenLive={(programId) =>
+          navigateRoute('live', programId || 'sin-filtro')
+        }
+      />
+      {authModalElement}
+    </>
   );
 }
 
@@ -223,10 +363,221 @@ function sanitizeLegacyHostText(value: string): string {
     .replace(/Plano de conducción Conducción con PIP\./gi, 'Plano principal de conducción con recuadro PIP.');
 }
 
+function buildProgramStudioConfig(
+  programId: string,
+  catalog: ProducerProgram[]
+): ShowTemplate {
+  const existingTpl = TV_SHOW_TEMPLATES.find((t) => t.id === programId);
+  const prog = catalog.find((p) => p.id === programId);
+  if (existingTpl) {
+    if (!prog) return existingTpl;
+    return {
+      ...existingTpl,
+      name: prog.title || existingTpl.name,
+      logoUrl: prog.logoUrl || existingTpl.logoUrl,
+      defaultOverlays: {
+        ...existingTpl.defaultOverlays,
+        channelName: prog.title || existingTpl.defaultOverlays.channelName,
+        logoUrl: prog.logoUrl || existingTpl.defaultOverlays.logoUrl,
+      },
+    };
+  }
+
+  const baseTpl = TV_SHOW_TEMPLATES[0];
+  const title = prog?.title || programId;
+  const logoUrl = prog?.logoUrl || OFFICIAL_PRODUCER_LOGO;
+  const backdropUrl =
+    prog?.imageUrl || baseTpl.previewImageUrl || '/src/assets/images/hero_production_set_1795376282591.jpg';
+  const subtitle =
+    prog?.schedule ||
+    prog?.format ||
+    'JUGEND FÜR EINE GRÜNE ZUKUNFT · Señal HD en Vivo';
+
+  const scenes: BroadcastScene[] = [
+    {
+      id: `${programId}-cam1`,
+      name: 'Cámara 1 · Principal',
+      obsSceneName: `${title} - Cam 1`,
+      cameraLabel: 'CAM 1',
+      backdropUrl,
+      cameraType: 'studio',
+      layoutMode: 'full',
+      description: `Plano principal de conducción · ${title}`,
+    },
+    {
+      id: `${programId}-cam2`,
+      name: 'Cámara 2 · Mesa / Invitados',
+      obsSceneName: `${title} - Cam 2`,
+      cameraLabel: 'CAM 2',
+      backdropUrl,
+      cameraType: 'studio',
+      layoutMode: 'pip',
+      description: `Plano de invitados y debate en mesa · ${title}`,
+    },
+    {
+      id: `${programId}-screen`,
+      name: 'Pantalla / Material',
+      obsSceneName: `${title} - Pantalla`,
+      cameraLabel: 'PANTALLA',
+      backdropUrl,
+      cameraType: 'screen',
+      layoutMode: 'split',
+      description: `Presentación de material audiovisual · ${title}`,
+    },
+    {
+      id: `${programId}-pausa`,
+      name: 'Placa Institucional',
+      obsSceneName: `${title} - Pausa`,
+      cameraLabel: 'PLACA',
+      backdropUrl,
+      cameraType: 'slate',
+      layoutMode: 'full',
+      slateColor: '#062614',
+      slateHeadline: `${title.toUpperCase()} · YA VOLVEMOS`,
+      description: 'JUGEND FÜR EINE GRÜNE ZUKUNFT · Señal en Vivo',
+    },
+  ];
+
+  const touchPads: TouchPadItem[] = [
+    {
+      id: `${programId}-pad-c1`,
+      label: 'CAM 1',
+      sublabel: 'Principal',
+      color: 'emerald',
+      actionType: 'scene',
+      targetValue: scenes[0].id,
+      category: 'escenas',
+    },
+    {
+      id: `${programId}-pad-c2`,
+      label: 'CAM 2 / PIP',
+      sublabel: 'Invitados',
+      color: 'emerald',
+      actionType: 'scene',
+      targetValue: scenes[1].id,
+      category: 'escenas',
+    },
+    {
+      id: `${programId}-pad-pausa`,
+      label: 'PLACA PAUSA',
+      sublabel: 'Corte',
+      color: 'slate',
+      actionType: 'scene',
+      targetValue: scenes[3].id,
+      category: 'escenas',
+    },
+    {
+      id: `${programId}-pad-zocalo`,
+      label: 'ZÓCALO',
+      sublabel: 'Mostrar / Ocultar',
+      color: 'blue',
+      actionType: 'overlay',
+      targetValue: 'toggleLowerThird',
+      category: 'graficas',
+    },
+    {
+      id: `${programId}-pad-cintillo`,
+      label: 'CINTILLO',
+      sublabel: 'Ticker inferior',
+      color: 'blue',
+      actionType: 'overlay',
+      targetValue: 'toggleTicker',
+      category: 'graficas',
+    },
+    {
+      id: `${programId}-pad-alert`,
+      label: 'ALERTA VIVO',
+      sublabel: 'Última hora',
+      color: 'crimson',
+      actionType: 'macro',
+      targetValue: 'breaking_news_alert',
+      category: 'macros',
+    },
+    {
+      id: `${programId}-pad-stinger`,
+      label: 'CORTINA TV',
+      sublabel: 'Inicio de bloque',
+      color: 'amber',
+      actionType: 'audio_stinger',
+      targetValue: 'inicio_bloque',
+      category: 'macros',
+    },
+    {
+      id: `${programId}-pad-cut`,
+      label: 'PASAR AIRE',
+      sublabel: 'Transición',
+      color: 'amber',
+      actionType: 'transition',
+      targetValue: 'fade',
+      category: 'macros',
+    },
+  ];
+
+  return {
+    ...baseTpl,
+    id: programId,
+    name: title,
+    formatLabel: prog?.format || baseTpl.formatLabel,
+    description: prog?.summary || subtitle,
+    previewImageUrl: backdropUrl,
+    logoUrl,
+    accentHex: '#16A34A',
+    scenes,
+    touchPads,
+    rundown: [
+      {
+        id: `${programId}-rd-1`,
+        title: `Apertura ${title}`,
+        sceneId: scenes[0].id,
+        durationSec: 20,
+        transitionType: 'fade',
+        autoLowerThird: true,
+        lowerThirdTitle: `${title} EN VIVO`,
+        lowerThirdSubtitle: subtitle,
+      },
+      {
+        id: `${programId}-rd-2`,
+        title: 'Bloque Invitados / Mesa',
+        sceneId: scenes[1].id,
+        durationSec: 25,
+        transitionType: 'cut',
+        autoLowerThird: false,
+      },
+    ],
+    defaultOverlays: {
+      ...baseTpl.defaultOverlays,
+      showLiveBadge: true,
+      channelName: title,
+      logoUrl,
+      showLowerThird: true,
+      lowerThirdTitle: `${title.toUpperCase()} · EN VIVO`,
+      lowerThirdSubtitle: subtitle,
+      showTicker: true,
+      tickerText: `${title} por JUGEND FÜR EINE GRÜNE ZUKUNFT · Participá en vivo dejando tu comentario`,
+      activeBannerTitle: null,
+      activeGuestBadge: null,
+      giveaway: null,
+      fadeToBlack: false,
+    },
+  };
+}
+
 function ControlConsole({
+  initialProgramId = 'sin-filtro',
+  authToken,
+  currentUser,
+  onOpenAuth,
+  onChangeProgramRoute,
+  onOpenLive,
   onBack,
   onBackToSite,
 }: {
+  initialProgramId?: string;
+  authToken: string | null;
+  currentUser: StaffUserPublic | null;
+  onOpenAuth: () => void;
+  onChangeProgramRoute: (programId: string) => void;
+  onOpenLive: (programId: string) => void;
   onBack: () => void;
   onBackToSite: () => void;
 }) {
@@ -283,18 +634,28 @@ function ControlConsole({
   }
 
   const [activeView, setActiveView] = useState<WorkspaceView>('switcher');
+  const [catalogPrograms, setCatalogPrograms] = useState<ProducerProgram[]>([]);
+  const [editProgramModalOpen, setEditProgramModalOpen] = useState(false);
   const [activeTemplateId, setActiveTemplateId] = useState<string>(() => {
-    return localStorage.getItem('mesacontrol_template_id') || 'sin-filtro';
+    return (
+      initialProgramId ||
+      localStorage.getItem('mesacontrol_template_id') ||
+      'sin-filtro'
+    );
   });
+  const activeProgramIdRef = useRef(activeTemplateId);
+  activeProgramIdRef.current = activeTemplateId;
 
   const activeTemplate: ShowTemplate = useMemo(() => {
-    return (
-      TV_SHOW_TEMPLATES.find((t) => t.id === activeTemplateId) ||
-      TV_SHOW_TEMPLATES[0]
-    );
-  }, [activeTemplateId]);
+    return buildProgramStudioConfig(activeTemplateId, catalogPrograms);
+  }, [activeTemplateId, catalogPrograms]);
 
-  // Editable Show Identity (#SinFiltro + Green by default)
+  const activeCatalogProgram = useMemo(
+    () => catalogPrograms.find((p) => p.id === activeTemplateId) || null,
+    [activeTemplateId, catalogPrograms]
+  );
+
+  // Editable Show Identity
   const [showName, setShowName] = useState<string>(() => {
     return (
       localStorage.getItem(`mesacontrol_showname_${activeTemplate.id}`) ||
@@ -363,7 +724,12 @@ function ControlConsole({
 
   const [sponsors, setSponsors] = useState<SponsorBanner[]>(() => {
     try {
-      const saved = localStorage.getItem('mesacontrol_sponsors_v1');
+      const perProgramKey = `mesacontrol_sponsors_${activeTemplate.id}`;
+      const saved =
+        localStorage.getItem(perProgramKey) ||
+        (activeTemplate.id === 'sin-filtro'
+          ? localStorage.getItem('mesacontrol_sponsors_v1')
+          : null);
       if (saved) {
         const parsed = JSON.parse(saved) as SponsorBanner[];
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -450,6 +816,12 @@ function ControlConsole({
   const [viewerCount, setViewerCount] = useState(0);
   const [audienceCount, setAudienceCount] = useState(36);
   const [copiedLiveLink, setCopiedLiveLink] = useState(false);
+  const [lastRecordedClip, setLastRecordedClip] = useState<{
+    blob: Blob;
+    filename: string;
+    programId: string;
+  } | null>(null);
+  const [publishingClip, setPublishingClip] = useState(false);
 
   // Offscreen Broadcast Compositor & WebRTC Peers
   const compositorCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -590,11 +962,17 @@ function ControlConsole({
 
   useEffect(() => {
     try {
-      localStorage.setItem('mesacontrol_sponsors_v1', JSON.stringify(sponsors));
+      localStorage.setItem(
+        `mesacontrol_sponsors_${activeTemplateId}`,
+        JSON.stringify(sponsors)
+      );
+      if (activeTemplateId === 'sin-filtro') {
+        localStorage.setItem('mesacontrol_sponsors_v1', JSON.stringify(sponsors));
+      }
     } catch {
       // ignore quota errors
     }
-  }, [sponsors]);
+  }, [activeTemplateId, sponsors]);
 
   useEffect(() => {
     try {
@@ -623,24 +1001,27 @@ function ControlConsole({
     }
   }, [giveawayConfig]);
 
-  // Sync State to Express Live Broadcast Server (/api/broadcast/state)
-  // Immediate flush when isLive or active scene changes; 60ms coalescing debounce for typing edits
+  // Sync State to Express Live Broadcast Server (/api/broadcast/state) scoped to activeTemplateId
   const prevSyncedLiveRef = useRef<boolean | null>(null);
   const prevSyncedSceneIdRef = useRef<string | null>(null);
+  const prevSyncedProgramIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!programScene) return;
     const isUrgent =
       prevSyncedLiveRef.current !== isStreaming ||
-      prevSyncedSceneIdRef.current !== programScene.id;
+      prevSyncedSceneIdRef.current !== programScene.id ||
+      prevSyncedProgramIdRef.current !== activeTemplateId;
     prevSyncedLiveRef.current = isStreaming;
     prevSyncedSceneIdRef.current = programScene.id;
+    prevSyncedProgramIdRef.current = activeTemplateId;
 
     const sendState = () => {
       fetch('/api/broadcast/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          programId: activeTemplateId,
           isLive: isStreaming,
           showName,
           accentHex,
@@ -667,7 +1048,7 @@ function ControlConsole({
 
     const timer = window.setTimeout(sendState, 60);
     return () => window.clearTimeout(timer);
-  }, [accentHex, isStreaming, overlays, programScene, showName, sponsors]);
+  }, [activeTemplateId, accentHex, isStreaming, overlays, programScene, showName, sponsors]);
 
   // Keep a hidden video element synced to the current Program scene's live stream/MP4
   useEffect(() => {
@@ -752,12 +1133,17 @@ function ControlConsole({
       }
       const ctrl = new AbortController();
       const abortId = window.setTimeout(() => ctrl.abort(), 900);
-      fetch(`/api/broadcast/frame?seq=${seq}`, {
-        method: 'POST',
-        headers: { 'Content-Type': blob.type || 'image/webp' },
-        body: blob,
-        signal: ctrl.signal,
-      })
+      fetch(
+        `/api/broadcast/frame?seq=${seq}&programId=${encodeURIComponent(
+          activeProgramIdRef.current
+        )}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': blob.type || 'image/webp' },
+          body: blob,
+          signal: ctrl.signal,
+        }
+      )
         .catch(() => {})
         .finally(() => {
           window.clearTimeout(abortId);
@@ -1002,6 +1388,7 @@ function ControlConsole({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            programId: activeProgramIdRef.current,
             targetId: viewerId,
             fromId: 'broadcaster',
             type: 'ice',
@@ -1022,6 +1409,7 @@ function ControlConsole({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          programId: activeProgramIdRef.current,
           targetId: viewerId,
           fromId: 'broadcaster',
           type: 'offer',
@@ -1034,14 +1422,20 @@ function ControlConsole({
   }, []);
 
   useEffect(() => {
-    fetch('/api/broadcast/comments')
+    fetch(
+      `/api/broadcast/comments?programId=${encodeURIComponent(activeTemplateId)}`
+    )
       .then((r) => r.json())
       .then((d) => {
         if (Array.isArray(d.comments)) setComments(d.comments);
       })
       .catch(() => {});
 
-    const es = new EventSource('/api/broadcast/events?role=broadcaster&clientId=broadcaster_main');
+    const es = new EventSource(
+      `/api/broadcast/events?role=broadcaster&clientId=broadcaster_main&programId=${encodeURIComponent(
+        activeTemplateId
+      )}`
+    );
 
     es.addEventListener('init', (ev) => {
       try {
@@ -1153,7 +1547,7 @@ function ControlConsole({
       peersRef.current.clear();
       recountConnectedPeers();
     };
-  }, [createOfferForViewer, recountConnectedPeers]);
+  }, [activeTemplateId, createOfferForViewer, recountConnectedPeers]);
 
   // Real-time PCM Audio Relay ONLY when at least one viewer lacks a direct WebRTC connection
   useEffect(() => {
@@ -1172,12 +1566,17 @@ function ControlConsole({
       inFlightCount += 1;
       const ctrl = new AbortController();
       const abortId = window.setTimeout(() => ctrl.abort(), 500);
-      fetch('/api/broadcast/audio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pcm16, sampleRate }),
-        signal: ctrl.signal,
-      })
+      fetch(
+        `/api/broadcast/audio?programId=${encodeURIComponent(
+          activeProgramIdRef.current
+        )}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pcm16, sampleRate }),
+          signal: ctrl.signal,
+        }
+      )
         .catch(() => {})
         .finally(() => {
           window.clearTimeout(abortId);
@@ -1188,20 +1587,71 @@ function ControlConsole({
     return () => {
       broadcastAudio.stopPcmRelay();
     };
-  }, [isStreaming, rtcReadyPeersCount, viewerCount]);
+  }, [activeTemplateId, isStreaming, rtcReadyPeersCount, viewerCount]);
 
-  // Switch TV Template cleanly
+  // Load full catalog of producer programs and hydrate custom program studio identity
+  useEffect(() => {
+    fetch('/api/producer/programs')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.ok || !Array.isArray(d.programs)) return;
+        const list = d.programs as ProducerProgram[];
+        setCatalogPrograms(list);
+
+        const currId = activeProgramIdRef.current;
+        const isStaticTpl = TV_SHOW_TEMPLATES.some((t) => t.id === currId);
+        const matched = list.find((p) => p.id === currId);
+        if (!isStaticTpl && matched) {
+          const tpl = buildProgramStudioConfig(currId, list);
+          if (!localStorage.getItem(`mesacontrol_showname_${currId}`)) {
+            setShowName(tpl.name);
+          }
+          if (!localStorage.getItem(`mesacontrol_scenes_${currId}`)) {
+            setScenes(tpl.scenes);
+            setProgramSceneId(tpl.scenes[0].id);
+            setPreviewSceneId(tpl.scenes[1]?.id || tpl.scenes[0].id);
+          }
+          if (!localStorage.getItem(`mesacontrol_overlays_${currId}`)) {
+            setOverlays(tpl.defaultOverlays);
+          }
+          if (!localStorage.getItem(`mesacontrol_pads_${currId}`)) {
+            setTouchPads(tpl.touchPads);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Switch active Program / TV Template cleanly
   const handleSelectTemplate = useCallback(
-    (templateId: string) => {
-      const tpl =
-        TV_SHOW_TEMPLATES.find((t) => t.id === templateId) ||
-        TV_SHOW_TEMPLATES[0];
+    (templateId: string, catalogOverride?: ProducerProgram[]) => {
+      const prevId = activeProgramIdRef.current;
+      if (prevId && prevId !== templateId && localStreaming) {
+        fetch('/api/broadcast/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ programId: prevId, isLive: false }),
+        }).catch(() => {});
+        setLocalStreaming(false);
+        peersRef.current.forEach((pc) => pc.close());
+        peersRef.current.clear();
+        recountConnectedPeers();
+      }
+
+      const tpl = buildProgramStudioConfig(
+        templateId,
+        catalogOverride || catalogPrograms
+      );
       setActiveTemplateId(tpl.id);
       localStorage.setItem('mesacontrol_template_id', tpl.id);
+      if (tpl.id !== prevId) {
+        onChangeProgramRoute(tpl.id);
+      }
 
       let savedScenes: BroadcastScene[] | null = null;
       let savedPads: TouchPadItem[] | null = null;
       let savedOverlays: OverlayState | null = null;
+      let savedSponsors: SponsorBanner[] | null = null;
       try {
         const rawSc = localStorage.getItem(`mesacontrol_scenes_${tpl.id}`);
         if (rawSc) savedScenes = JSON.parse(rawSc) as BroadcastScene[];
@@ -1209,6 +1659,17 @@ function ControlConsole({
         if (rawPads) savedPads = JSON.parse(rawPads) as TouchPadItem[];
         const rawOv = localStorage.getItem(`mesacontrol_overlays_${tpl.id}`);
         if (rawOv) savedOverlays = JSON.parse(rawOv) as OverlayState;
+        const rawSp =
+          localStorage.getItem(`mesacontrol_sponsors_${tpl.id}`) ||
+          (tpl.id === 'sin-filtro'
+            ? localStorage.getItem('mesacontrol_sponsors_v1')
+            : null);
+        if (rawSp) {
+          const parsedSp = JSON.parse(rawSp) as SponsorBanner[];
+          if (Array.isArray(parsedSp) && parsedSp.length > 0) {
+            savedSponsors = parsedSp;
+          }
+        }
       } catch {
         // ignore
       }
@@ -1230,6 +1691,7 @@ function ControlConsole({
         giveaway: null,
         fadeToBlack: false,
       });
+      setSponsors(savedSponsors || DEFAULT_SPONSOR_BANNERS);
       setTouchPads(savedPads || tpl.touchPads);
       setRundown(tpl.rundown);
       setAudioChannels(tpl.audioChannels);
@@ -1241,10 +1703,25 @@ function ControlConsole({
       setCycleSceneIds(nextScenes.slice(0, 3).map((s) => s.id));
       setCycleRemainingSec(cycleIntervalSec);
 
-      showNotice(`Plantilla "${tpl.name}" activada`);
+      showNotice(`Estudio listo para emitir "${tpl.name}"`);
     },
-    [cycleIntervalSec, showNotice]
+    [
+      catalogPrograms,
+      cycleIntervalSec,
+      localStreaming,
+      onChangeProgramRoute,
+      recountConnectedPeers,
+      showNotice,
+    ]
   );
+
+  // Sync studio program when URL route changes
+  useEffect(() => {
+    if (initialProgramId && initialProgramId !== activeTemplateId) {
+      handleSelectTemplate(initialProgramId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialProgramId]);
 
   // Camera Device & Screen Capture Connections per Scene
   const connectDeviceToScene = useCallback(
@@ -1474,10 +1951,16 @@ function ControlConsole({
             const blob = new Blob(recordedChunksRef.current, {
               type: 'video/webm',
             });
+            const fname = `${activeProgramIdRef.current}-${Date.now()}.webm`;
+            setLastRecordedClip({
+              blob,
+              filename: fname,
+              programId: activeProgramIdRef.current,
+            });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `sin-filtro-${Date.now()}.webm`;
+            a.download = fname;
             a.click();
             URL.revokeObjectURL(url);
           };
@@ -1498,10 +1981,56 @@ function ControlConsole({
       ) {
         mediaRecorderRef.current.stop();
         mediaRecorderRef.current = null;
-        showNotice('Video del programa descargado (.webm)');
+        showNotice('Grabación lista: podés publicarla directo en el Archivo del Programa');
       } else {
         showNotice('Grabación detenida');
       }
+    }
+  };
+
+  const handlePublishLastClip = async () => {
+    if (!lastRecordedClip) return;
+    if (!authToken || !currentUser) {
+      onOpenAuth();
+      return;
+    }
+    setPublishingClip(true);
+    try {
+      const safeTitle = `${showName} · Emisión ${new Date().toLocaleDateString(
+        'es-AR'
+      )}`;
+      const safeEpisode = new Date().toLocaleDateString('es-AR');
+      const res = await fetch(
+        `/api/producer/programs/${encodeURIComponent(
+          lastRecordedClip.programId
+        )}/videos/upload`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            'Content-Type': lastRecordedClip.blob.type || 'video/webm',
+            'x-video-filename': encodeURIComponent(lastRecordedClip.filename),
+            'x-video-title': encodeURIComponent(safeTitle),
+            'x-video-episode': encodeURIComponent(safeEpisode),
+            'x-video-duration': encodeURIComponent('HD'),
+            'x-video-description': encodeURIComponent(
+              `Grabación emitida en vivo desde MesaControl TV (${showName}).`
+            ),
+          },
+          body: lastRecordedClip.blob,
+        }
+      );
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        showNotice(data.error || 'No se pudo publicar la grabación');
+        return;
+      }
+      setLastRecordedClip(null);
+      showNotice(`Grabación publicada en el Archivo de ${showName}`);
+    } catch {
+      showNotice('Error de conexión al publicar grabación');
+    } finally {
+      setPublishingClip(false);
     }
   };
 
@@ -1899,8 +2428,10 @@ function ControlConsole({
   const obsConnected = obsStatus.connectionStatus === 'connected';
   const liveShareUrl =
     typeof window !== 'undefined'
-      ? `${window.location.origin}${window.location.pathname}?live=1`
-      : '?live=1';
+      ? `${window.location.origin}${window.location.pathname}?live=1&program=${encodeURIComponent(
+          activeTemplateId
+        )}`
+      : `?live=1&program=${encodeURIComponent(activeTemplateId)}`;
 
   const handleCopyLiveLink = () => {
     navigator.clipboard.writeText(liveShareUrl).then(() => {
@@ -1996,7 +2527,7 @@ function ControlConsole({
       {/* WORKSPACE TRANSPORT TOOLBAR */}
       <div className="bg-[#0E131B] border-b border-white/8">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
-          {/* Show Metadata & Viewer Count */}
+          {/* Show Selector + Metadata & Viewer Count */}
           <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-400">
             {overlays.logoUrl ? (
               <img
@@ -2010,7 +2541,40 @@ function ControlConsole({
                 style={{ backgroundColor: accentHex }}
               />
             )}
-            <span className="font-semibold text-white">{showName}</span>
+
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="studio-program-select" className="sr-only">
+                Programa en emisión
+              </label>
+              <select
+                id="studio-program-select"
+                value={activeTemplateId}
+                onChange={(e) => handleSelectTemplate(e.target.value)}
+                className="min-h-[36px] px-2.5 py-1 bg-[#080B10] border border-emerald-500/40 rounded-lg text-xs font-semibold text-white cursor-pointer"
+              >
+                {(catalogPrograms.length > 0
+                  ? catalogPrograms
+                  : TV_SHOW_TEMPLATES.map((t) => ({ id: t.id, title: t.name }))
+                ).map((prog) => (
+                  <option key={prog.id} value={prog.id}>
+                    {prog.title}
+                  </option>
+                ))}
+              </select>
+
+              {activeCatalogProgram && (
+                <button
+                  type="button"
+                  onClick={() => setEditProgramModalOpen(true)}
+                  title="Editar programa actual"
+                  className="min-h-[36px] px-2.5 py-1 border border-white/15 hover:border-white/35 bg-white/5 hover:bg-white/10 text-slate-200 text-xs font-medium rounded-lg inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span className="hidden xl:inline">Editar Programa</span>
+                </button>
+              )}
+            </div>
+
             <span aria-hidden="true">·</span>
             <span className="font-mono tabular-nums">
               {obsConnected
@@ -2072,15 +2636,14 @@ function ControlConsole({
               )}
             </button>
 
-            <a
-              href={liveShareUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="min-h-[40px] px-3 py-1.5 text-xs font-medium rounded-lg border border-white/12 bg-white/5 hover:bg-white/10 text-slate-200 flex items-center gap-1.5 whitespace-nowrap"
+            <button
+              type="button"
+              onClick={() => onOpenLive(activeTemplateId)}
+              className="min-h-[40px] px-3 py-1.5 text-xs font-medium rounded-lg border border-white/12 bg-white/5 hover:bg-white/10 text-slate-200 flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              <span>Ver Link</span>
-            </a>
+              <span>Ver Emisión</span>
+            </button>
 
             <button
               type="button"
@@ -2119,6 +2682,20 @@ function ControlConsole({
                   : 'Grabar'}
               </span>
             </button>
+
+            {lastRecordedClip && !isRecording && (
+              <button
+                type="button"
+                disabled={publishingClip}
+                onClick={handlePublishLastClip}
+                className="min-h-[40px] px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-emerald-400/50 bg-emerald-950/70 hover:bg-emerald-800 text-emerald-100 flex items-center gap-1.5 cursor-pointer whitespace-nowrap disabled:opacity-60"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>
+                  {publishingClip ? 'Publicando...' : 'Publicar en Archivo'}
+                </span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -2614,7 +3191,7 @@ function ControlConsole({
                       <span>{tab.label}</span>
                       {tab.activeOnAir && (
                         <span
-                          className={`w-2 h-2 rounded-full ${
+                          className={`w-1.5 h-1.5 ${
                             isSelected ? 'bg-white' : 'bg-emerald-400'
                           }`}
                           title="Activo al aire"
@@ -2704,7 +3281,9 @@ function ControlConsole({
                   onDeleteComment={async (id) => {
                     try {
                       const res = await fetch(
-                        `/api/broadcast/comments/${encodeURIComponent(id)}`,
+                        `/api/broadcast/comments/${encodeURIComponent(
+                          id
+                        )}?programId=${encodeURIComponent(activeTemplateId)}`,
                         { method: 'DELETE' }
                       );
                       const data = await res.json();
@@ -2718,6 +3297,7 @@ function ControlConsole({
 
               {studioModuleTab === 'sponsors' && (
                 <SponsorManagerPanel
+                  programTitle={showName}
                   sponsors={sponsors}
                   onUpdateSponsors={setSponsors}
                   onPushSponsorToLowerThird={(sp) => {
@@ -2934,12 +3514,18 @@ function ControlConsole({
               />
             </div>
             <TemplateStudioPanel
-              templates={TV_SHOW_TEMPLATES}
+              templates={
+                catalogPrograms.length > 0
+                  ? catalogPrograms.map((p) =>
+                      buildProgramStudioConfig(p.id, catalogPrograms)
+                    )
+                  : TV_SHOW_TEMPLATES
+              }
               activeTemplateId={activeTemplateId}
               showName={showName}
               accentHex={accentHex}
               overlays={overlays}
-              onSelectTemplate={handleSelectTemplate}
+              onSelectTemplate={(id) => handleSelectTemplate(id)}
               onUpdateShowMeta={handleUpdateShowMeta}
               onUpdateOverlays={handleUpdateOverlays}
               onSyncOverlaysToObs={syncOverlaysToObs}
@@ -2952,6 +3538,7 @@ function ControlConsole({
         {activeView === 'sponsors' && (
           <div className="space-y-5">
             <SponsorManagerPanel
+              programTitle={showName}
               sponsors={sponsors}
               onUpdateSponsors={setSponsors}
               onPushSponsorToLowerThird={(sp) => {
@@ -2996,6 +3583,25 @@ function ControlConsole({
         onDisconnect={() => {
           obsClient.disconnect();
           showNotice('Desconectado de OBS Studio');
+        }}
+      />
+
+      {/* QUICK EDIT ACTIVE PROGRAM */}
+      <ProgramQuickEditModal
+        open={editProgramModalOpen}
+        program={activeCatalogProgram}
+        authToken={authToken}
+        onClose={() => setEditProgramModalOpen(false)}
+        onRequestAuth={onOpenAuth}
+        onSaved={(updated, allPrograms) => {
+          setCatalogPrograms(allPrograms);
+          if (updated.id === activeTemplateId) {
+            handleUpdateShowMeta({ showName: updated.title });
+            if (updated.logoUrl) {
+              handleUpdateOverlays({ logoUrl: updated.logoUrl });
+            }
+          }
+          showNotice(`Programa "${updated.title}" actualizado`);
         }}
       />
     </div>

@@ -32,7 +32,9 @@ interface ProducerAdminPanelProps {
   programs: ProducerProgram[];
   onProgramsUpdated: (programs: ProducerProgram[]) => void;
   onOpenSiteEditor: () => void;
-  onOpenStudio: () => void;
+  onOpenStudio: (programId?: string) => void;
+  onOpenLive?: (programId?: string) => void;
+  onOpenProgramApartado?: (programId: string) => void;
   onBack: () => void;
   onHome: () => void;
 }
@@ -55,6 +57,8 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
   onProgramsUpdated,
   onOpenSiteEditor,
   onOpenStudio,
+  onOpenLive,
+  onOpenProgramApartado,
   onBack,
   onHome,
 }) => {
@@ -100,6 +104,7 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
   const [progImageUrl, setProgImageUrl] = useState(
     '/src/assets/images/hero_production_set_1795376282591.jpg'
   );
+  const [progLogoUrl, setProgLogoUrl] = useState('');
   const [progFeatured, setProgFeatured] = useState(false);
   const [savingProgram, setSavingProgram] = useState(false);
 
@@ -242,6 +247,7 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
       'Realización multicámara HD\nGráfica televisiva en tiempo real\nOperación en MesaControl TV'
     );
     setProgImageUrl('/src/assets/images/hero_production_set_1795376282591.jpg');
+    setProgLogoUrl('');
     setProgFeatured(false);
   };
 
@@ -261,20 +267,25 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
     setProgImageUrl(
       prog.imageUrl || '/src/assets/images/hero_production_set_1795376282591.jpg'
     );
+    setProgLogoUrl(prog.logoUrl || '');
     setProgFeatured(Boolean(prog.featured));
     setActiveTab('programs');
   };
 
-  const handleProgramImageUpload = (file?: File) => {
+  const handleProgramImageUpload = (
+    file?: File,
+    target: 'cover' | 'logo' = 'cover'
+  ) => {
     if (!file) return;
     if (file.size > 1_400_000) {
-      setErrorMsg('La portada del programa supera 1.4 MB.');
+      setErrorMsg('La imagen del programa supera 1.4 MB.');
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        setProgImageUrl(reader.result);
+        if (target === 'cover') setProgImageUrl(reader.result);
+        else setProgLogoUrl(reader.result);
       }
     };
     reader.readAsDataURL(file);
@@ -302,6 +313,7 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
         .map((l) => l.trim())
         .filter(Boolean),
       imageUrl: progImageUrl.trim(),
+      logoUrl: progLogoUrl.trim(),
       featured: progFeatured,
     };
 
@@ -423,7 +435,7 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
             {perms.canOperateStudio && (
               <button
                 type="button"
-                onClick={onOpenStudio}
+                onClick={() => onOpenStudio()}
                 className="min-h-[40px] px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
               >
                 <MonitorPlay className="w-3.5 h-3.5" />
@@ -897,6 +909,19 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
 
               <div>
                 <label className="block text-xs text-slate-300 mb-1">
+                  Canal o Señal
+                </label>
+                <input
+                  type="text"
+                  value={progSignal}
+                  onChange={(e) => setProgSignal(e.target.value)}
+                  placeholder="Radioactiva 88.5 FM + Web HD"
+                  className="w-full min-h-[40px] px-3 py-2 bg-[#050708] border border-white/15 rounded-lg text-sm text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-300 mb-1">
                   Imagen de Portada (URL o Subir Foto)
                 </label>
                 <div className="flex gap-2">
@@ -914,7 +939,34 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
                       accept="image/*"
                       className="hidden"
                       onChange={(e) =>
-                        handleProgramImageUpload(e.target.files?.[0])
+                        handleProgramImageUpload(e.target.files?.[0], 'cover')
+                      }
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-300 mb-1">
+                  Logo del Programa (URL o Subir, opcional)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={progLogoUrl}
+                    onChange={(e) => setProgLogoUrl(e.target.value)}
+                    placeholder="Opcional"
+                    className="flex-1 min-h-[40px] px-3 py-2 bg-[#050708] border border-white/15 rounded-lg text-xs text-white font-mono"
+                  />
+                  <label className="min-h-[40px] px-3 py-2 border border-white/15 rounded-lg text-xs text-slate-200 hover:bg-white/5 inline-flex items-center gap-1.5 cursor-pointer shrink-0">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Subir</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) =>
+                        handleProgramImageUpload(e.target.files?.[0], 'logo')
                       }
                     />
                   </label>
@@ -974,7 +1026,35 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {perms.canOperateStudio && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenStudio(prog.id)}
+                          className="min-h-[36px] px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white rounded-lg inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <MonitorPlay className="w-3.5 h-3.5" />
+                          <span>Emitir</span>
+                        </button>
+                      )}
+                      {onOpenProgramApartado && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenProgramApartado(prog.id)}
+                          className="min-h-[36px] px-3 py-1.5 border border-white/15 hover:border-emerald-500/40 text-xs text-slate-200 hover:text-emerald-300 rounded-lg cursor-pointer"
+                        >
+                          Apartado
+                        </button>
+                      )}
+                      {onOpenLive && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenLive(prog.id)}
+                          className="min-h-[36px] px-3 py-1.5 border border-emerald-500/40 text-xs text-emerald-300 hover:bg-emerald-950/50 rounded-lg cursor-pointer"
+                        >
+                          Emisión
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => startEditProgram(prog)}

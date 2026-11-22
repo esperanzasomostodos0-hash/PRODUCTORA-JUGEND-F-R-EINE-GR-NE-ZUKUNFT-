@@ -236,3 +236,20 @@ export interface ProducerInquiry {
   message: string;
   createdAt: number;
 }
+
+export interface ProgramArchiveVideo {
+  id: string;
+  programId: string;
+  title: string;
+  episodeLabel: string;
+  description: string;
+  durationLabel: string;
+  videoUrl: string;
+  isUploadedFile: boolean;
+  fileName?: string;
+  mimeType?: string;
+  fileSizeBytes?: number;
+  uploadedBy: string;
+  createdAt: number;
+}
+

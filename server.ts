@@ -1,27 +1,34 @@
+import crypto from 'crypto';
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
+  VIDEOS_DIR,
   addInquiry,
+  addProgramVideo,
   authenticateStaffUser,
   claimInitialAdmin,
   createProgram,
   createProgramRequest,
   createStaffUser,
   deleteProgram,
+  deleteProgramVideo,
   deleteStaffUser,
   getSiteContent,
   listInquiries,
   listProgramRequests,
+  listProgramVideos,
   listPrograms,
   listStaffUsers,
   needsInitialAdminSetup,
   resetSiteContentToDefaults,
+  resolveSafeVideoPath,
   signSessionToken,
   updateProgram,
   updateProgramRequestStatus,
+  updateProgramVideo,
   updateSiteContent,
   updateStaffUser,
   verifySessionToken,
@@ -117,6 +124,7 @@ interface ViewerCommentPayload {
 }
 
 interface LiveBroadcastState {
+  programId: string;
   isLive: boolean;
   startedAt: number | null;
   showName: string;
@@ -131,6 +139,19 @@ interface SseClient {
   id: string;
   role: 'broadcaster' | 'viewer';
   res: Response;
+}
+
+interface BroadcastRoom {
+  programId: string;
+  currentState: LiveBroadcastState;
+  latestFrameDataUrl: string | null;
+  latestFrameUpdatedAt: number;
+  latestFrameSeq: number;
+  simulatedAudience: number;
+  offlineTick: number;
+  liveTick: number;
+  commentsStore: ViewerCommentPayload[];
+  clients: Map<string, SseClient>;
 }
 
 const DEFAULT_SPONSORS: SponsorBannerPayload[] = [
@@ -163,103 +184,189 @@ const DEFAULT_SPONSORS: SponsorBannerPayload[] = [
   },
 ];
 
-const DEFAULT_STATE: LiveBroadcastState = {
-  isLive: false,
-  startedAt: null,
-  showName: '#SinFiltro',
-  accentHex: '#16A34A',
-  activeScene: {
-    id: 'sf-estudio',
-    name: 'Estudio #SinFiltro',
-    cameraLabel: 'CAM 1 · GENERAL',
-    cameraType: 'studio',
-    layoutMode: 'full',
-    description: 'Cámara principal de estudio #SinFiltro.',
-  },
-  overlays: {
-    showLowerThird: true,
-    lowerThirdTitle: '#SinFiltro en Vivo',
-    lowerThirdSubtitle:
-      'Sábados de 17:00 a 19:00 · Radioactiva 88.5 Puerto Esperanza',
-    showTicker: true,
-    tickerText:
-      'ESTÁS VIENDO #SinFiltro EN VIVO · Jóvenes de Huella Verde · Radioactiva 88.5 Puerto Esperanza',
-    showBug: true,
-    channelName: '#SinFiltro',
-    logoUrl: OFFICIAL_LOGO_URL,
-    showClock: true,
-    showLiveBadge: true,
-    showScoreboard: false,
-    scoreHomeName: 'LOC',
-    scoreHome: 0,
-    scoreAwayName: 'VIS',
-    scoreAway: 0,
-    matchClock: '00:00',
-    activeBannerTitle: null,
-    activeGuestBadge: null,
-    giveaway: null,
-    fadeToBlack: false,
-  },
-  sponsors: DEFAULT_SPONSORS,
-  updatedAt: Date.now(),
-};
-
-let currentState: LiveBroadcastState = { ...DEFAULT_STATE };
-let latestFrameDataUrl: string | null = null;
-let latestFrameUpdatedAt = 0;
-let latestFrameSeq = 0;
-
-// Realistic Organic Audience Counter:
-// Offline -> around 36 (fluctuates gently +/- 1 or 2 every 6-10s)
-// Live -> starts just above 2567 and fluctuates naturally (+/- 1 to 3) with gentle drift, never climbing unrealistically fast
-let simulatedAudience = 36;
-let offlineTick = 0;
-let liveTick = 0;
-
 const OFFLINE_DELTAS = [1, -1, 0, 2, -1, -1, 1, 0, -2, 1];
 const LIVE_DELTAS = [2, -1, 1, 0, -2, 3, -1, 1, -2, 2, 0, -1];
 
-const commentsStore: ViewerCommentPayload[] = [
-  {
-    id: 'c-init-1',
-    author: 'Lucía Benítez',
-    location: 'Puerto Esperanza',
-    message: '¡Excelente programa chicos de Huella Verde! Escuchando firme por Radioactiva 88.5.',
-    createdAt: Date.now() - 240_000,
-  },
-  {
-    id: 'c-init-2',
-    author: 'Mateo Acosta',
-    location: 'Barrio Centro',
-    message: '¡Saludos a toda la mesa de #SinFiltro! Queremos participar en la trivia.',
-    createdAt: Date.now() - 90_000,
-  },
-];
+const broadcastRooms = new Map<string, BroadcastRoom>();
 
-const clients = new Map<string, SseClient>();
+function normalizeProgramId(raw?: unknown): string {
+  const cleaned = String(raw || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 80);
+  return cleaned || 'sin-filtro';
+}
 
-function getViewerCount(): number {
+function buildDefaultStateForProgram(programId: string): LiveBroadcastState {
+  if (programId === 'sin-filtro') {
+    return {
+      programId: 'sin-filtro',
+      isLive: false,
+      startedAt: null,
+      showName: '#SinFiltro',
+      accentHex: '#16A34A',
+      activeScene: {
+        id: 'sf-estudio',
+        name: 'Estudio #SinFiltro',
+        cameraLabel: 'CAM 1 · GENERAL',
+        cameraType: 'studio',
+        layoutMode: 'full',
+        description: 'Cámara principal de estudio #SinFiltro.',
+      },
+      overlays: {
+        showLowerThird: true,
+        lowerThirdTitle: '#SinFiltro en Vivo',
+        lowerThirdSubtitle:
+          'Sábados de 17:00 a 19:00 · Radioactiva 88.5 Puerto Esperanza',
+        showTicker: true,
+        tickerText:
+          'ESTÁS VIENDO #SinFiltro EN VIVO · Radioactiva 88.5 Puerto Esperanza · Participá con tu comentario',
+        showBug: true,
+        channelName: '#SinFiltro',
+        logoUrl: OFFICIAL_LOGO_URL,
+        showClock: true,
+        showLiveBadge: true,
+        showScoreboard: false,
+        scoreHomeName: 'LOC',
+        scoreHome: 0,
+        scoreAwayName: 'VIS',
+        scoreAway: 0,
+        matchClock: '00:00',
+        activeBannerTitle: null,
+        activeGuestBadge: null,
+        giveaway: null,
+        fadeToBlack: false,
+      },
+      sponsors: DEFAULT_SPONSORS.map((s) => ({ ...s })),
+      updatedAt: Date.now(),
+    };
+  }
+
+  const prog = listPrograms().find((p) => p.id === programId);
+  const title = prog?.title || programId;
+  const schedule = prog?.schedule || prog?.format || 'Señal HD Oficial';
+  const hostTeam = prog?.hostTeam || 'JUGEND FÜR EINE GRÜNE ZUKUNFT';
+  const channelLabel = prog?.channelOrSignal || 'Streaming HD JZ';
+  const siteLogo = getSiteContent().logoUrl || OFFICIAL_LOGO_URL;
+
+  return {
+    programId,
+    isLive: false,
+    startedAt: null,
+    showName: title,
+    accentHex: '#16A34A',
+    activeScene: {
+      id: `${programId}-estudio`,
+      name: `Estudio ${title}`,
+      cameraLabel: 'CAM 1 · GENERAL',
+      cameraType: 'studio',
+      layoutMode: 'full',
+      description: prog?.summary || `Señal principal de ${title}.`,
+    },
+    overlays: {
+      showLowerThird: true,
+      lowerThirdTitle: `${title} en Vivo`,
+      lowerThirdSubtitle: `${schedule}${hostTeam ? ` · ${hostTeam}` : ''}`,
+      showTicker: true,
+      tickerText: `ESTÁS VIENDO ${title} EN VIVO · ${hostTeam} · ${channelLabel}`,
+      showBug: true,
+      channelName: title,
+      logoUrl: prog?.logoUrl || siteLogo,
+      showClock: true,
+      showLiveBadge: true,
+      showScoreboard: false,
+      scoreHomeName: 'LOC',
+      scoreHome: 0,
+      scoreAwayName: 'VIS',
+      scoreAway: 0,
+      matchClock: '00:00',
+      activeBannerTitle: null,
+      activeGuestBadge: null,
+      giveaway: null,
+      fadeToBlack: false,
+    },
+    sponsors: DEFAULT_SPONSORS.map((s) => ({ ...s })),
+    updatedAt: Date.now(),
+  };
+}
+
+function buildInitialCommentsForProgram(programId: string): ViewerCommentPayload[] {
+  if (programId === 'sin-filtro') {
+    return [
+      {
+        id: 'c-init-1',
+        author: 'Lucía Benítez',
+        location: 'Puerto Esperanza',
+        message:
+          '¡Excelente programa equipo de #SinFiltro! Escuchando firme por Radioactiva 88.5.',
+        createdAt: Date.now() - 240_000,
+      },
+      {
+        id: 'c-init-2',
+        author: 'Mateo Acosta',
+        location: 'Barrio Centro',
+        message:
+          '¡Saludos a toda la mesa de #SinFiltro! Queremos participar en la trivia.',
+        createdAt: Date.now() - 90_000,
+      },
+    ];
+  }
+  const prog = listPrograms().find((p) => p.id === programId);
+  const title = prog?.title || programId;
+  return [
+    {
+      id: `c-init-${programId}-1`,
+      author: 'Comunidad JZ',
+      location: 'Puerto Esperanza',
+      message: `¡Esperando la emisión en vivo de ${title} por JUGEND FÜR EINE GRÜNE ZUKUNFT!`,
+      createdAt: Date.now() - 120_000,
+    },
+  ];
+}
+
+function getOrCreateRoom(rawProgramId?: unknown): BroadcastRoom {
+  const programId = normalizeProgramId(rawProgramId);
+  const existing = broadcastRooms.get(programId);
+  if (existing) return existing;
+
+  const room: BroadcastRoom = {
+    programId,
+    currentState: buildDefaultStateForProgram(programId),
+    latestFrameDataUrl: null,
+    latestFrameUpdatedAt: 0,
+    latestFrameSeq: 0,
+    simulatedAudience: 36,
+    offlineTick: 0,
+    liveTick: 0,
+    commentsStore: buildInitialCommentsForProgram(programId),
+    clients: new Map<string, SseClient>(),
+  };
+  broadcastRooms.set(programId, room);
+  return room;
+}
+
+function getViewerCount(room: BroadcastRoom): number {
   let count = 0;
-  clients.forEach((c) => {
+  room.clients.forEach((c) => {
     if (c.role === 'viewer') count += 1;
   });
   return count;
 }
 
-function getBroadcasterOnline(): boolean {
+function getBroadcasterOnline(room: BroadcastRoom): boolean {
   let found = false;
-  clients.forEach((c) => {
+  room.clients.forEach((c) => {
     if (c.role === 'broadcaster') found = true;
   });
   return found;
 }
 
-function getAudienceDisplayCount(): number {
-  const realViewers = getViewerCount();
-  if (currentState.isLive) {
-    return Math.max(2567, simulatedAudience + realViewers);
+function getAudienceDisplayCount(room: BroadcastRoom): number {
+  const realViewers = getViewerCount(room);
+  if (room.currentState.isLive) {
+    return Math.max(2567, room.simulatedAudience + realViewers);
   }
-  return Math.max(24, simulatedAudience);
+  return Math.max(24, room.simulatedAudience);
 }
 
 function sendSse(res: Response, event: string, data: unknown) {
@@ -271,83 +378,139 @@ function sendSse(res: Response, event: string, data: unknown) {
 }
 
 function broadcastAll(
+  room: BroadcastRoom,
   event: string,
   data: unknown,
   filterRole?: 'broadcaster' | 'viewer'
 ) {
-  clients.forEach((client) => {
+  room.clients.forEach((client) => {
     if (!filterRole || client.role === filterRole) {
       sendSse(client.res, event, data);
     }
   });
 }
 
-function broadcastPresence() {
+function broadcastPresence(room: BroadcastRoom) {
   const payload = {
-    viewerCount: getViewerCount(),
-    audienceCount: getAudienceDisplayCount(),
-    broadcasterOnline: getBroadcasterOnline(),
+    programId: room.programId,
+    viewerCount: getViewerCount(room),
+    audienceCount: getAudienceDisplayCount(room),
+    broadcasterOnline: getBroadcasterOnline(room),
   };
-  broadcastAll('presence', payload);
+  broadcastAll(room, 'presence', payload);
 }
 
-function notifyBroadcasterOfWaitingViewers() {
-  clients.forEach((c) => {
+function notifyBroadcasterOfWaitingViewers(room: BroadcastRoom) {
+  room.clients.forEach((c) => {
     if (c.role === 'viewer') {
-      broadcastAll('viewer-joined', { viewerId: c.id }, 'broadcaster');
+      broadcastAll(room, 'viewer-joined', { viewerId: c.id }, 'broadcaster');
     }
   });
 }
 
-// Update synchronized audience count on an organic randomized cadence (6.5s - 10.5s)
+// Synchronized organic audience cadence across active rooms (6.5s - 10.5s)
 function scheduleAudienceTick() {
   const delayMs = 6500 + Math.floor(Math.random() * 4000);
   setTimeout(() => {
-    if (currentState.isLive) {
-      let delta = LIVE_DELTAS[liveTick % LIVE_DELTAS.length];
-      liveTick += 1;
-      // Mean-reversion so it stays organic around 2570-2635 without racing upward
-      if (simulatedAudience > 2625 && delta > 0) {
-        delta = -1;
+    broadcastRooms.forEach((room) => {
+      if (room.currentState.isLive) {
+        let delta = LIVE_DELTAS[room.liveTick % LIVE_DELTAS.length];
+        room.liveTick += 1;
+        if (room.simulatedAudience > 2625 && delta > 0) {
+          delta = -1;
+        }
+        room.simulatedAudience = Math.max(2567, room.simulatedAudience + delta);
+      } else {
+        const delta = OFFLINE_DELTAS[room.offlineTick % OFFLINE_DELTAS.length];
+        room.offlineTick += 1;
+        const next = room.simulatedAudience + delta;
+        room.simulatedAudience = Math.max(31, Math.min(42, next));
       }
-      simulatedAudience = Math.max(2567, simulatedAudience + delta);
-    } else {
-      const delta = OFFLINE_DELTAS[offlineTick % OFFLINE_DELTAS.length];
-      offlineTick += 1;
-      const next = simulatedAudience + delta;
-      simulatedAudience = Math.max(31, Math.min(42, next));
-    }
-    broadcastPresence();
+      if (room.clients.size > 0) {
+        broadcastPresence(room);
+      }
+    });
     scheduleAudienceTick();
   }, delayMs);
 }
 scheduleAudienceTick();
 
+const MAX_VIDEO_UPLOAD_BYTES = 250 * 1024 * 1024; // 250 MB
+
+const VIDEO_EXT_BY_MIME: Record<string, string> = {
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/quicktime': 'mov',
+  'video/x-matroska': 'mkv',
+  'video/ogg': 'ogv',
+};
+
+const MIME_BY_VIDEO_EXT: Record<string, string> = {
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  mkv: 'video/x-matroska',
+  ogv: 'video/ogg',
+};
+
+function decodeSafeHeader(val: unknown, fallback = '', maxLen = 400): string {
+  if (typeof val !== 'string' || !val) return fallback;
+  try {
+    return decodeURIComponent(val).trim().slice(0, maxLen) || fallback;
+  } catch {
+    return val.trim().slice(0, maxLen) || fallback;
+  }
+}
+
 async function startServer() {
   const app = express();
   const port = Number(process.env.PORT) || 3000;
 
+  // Ensure default catalog rooms exist on boot
+  listPrograms().forEach((p) => getOrCreateRoom(p.id));
+
   app.use(express.json({ limit: '8mb' }));
 
-  // Current broadcast state & latest frame snapshot
-  app.get('/api/broadcast/state', (_req: Request, res: Response) => {
+  // Summary of all broadcast rooms (live status per program)
+  app.get('/api/broadcast/rooms', (_req: Request, res: Response) => {
+    const programs = listPrograms();
+    programs.forEach((p) => getOrCreateRoom(p.id));
+    const rooms = Array.from(broadcastRooms.values()).map((room) => ({
+      programId: room.programId,
+      isLive: room.currentState.isLive,
+      showName: room.currentState.showName,
+      startedAt: room.currentState.startedAt,
+      updatedAt: room.currentState.updatedAt,
+      viewerCount: getViewerCount(room),
+      audienceCount: getAudienceDisplayCount(room),
+      broadcasterOnline: getBroadcasterOnline(room),
+    }));
+    res.json({ ok: true, rooms });
+  });
+
+  // Current broadcast state & latest frame snapshot scoped by programId
+  app.get('/api/broadcast/state', (req: Request, res: Response) => {
+    const room = getOrCreateRoom(req.query.programId);
     res.json({
-      state: currentState,
-      frame: latestFrameDataUrl,
-      frameUpdatedAt: latestFrameUpdatedAt,
-      viewerCount: getViewerCount(),
-      audienceCount: getAudienceDisplayCount(),
-      broadcasterOnline: getBroadcasterOnline(),
-      comments: commentsStore,
+      programId: room.programId,
+      state: room.currentState,
+      frame: room.latestFrameDataUrl,
+      frameUpdatedAt: room.latestFrameUpdatedAt,
+      viewerCount: getViewerCount(room),
+      audienceCount: getAudienceDisplayCount(room),
+      broadcasterOnline: getBroadcasterOnline(room),
+      comments: room.commentsStore,
     });
   });
 
-  // Comments endpoints
-  app.get('/api/broadcast/comments', (_req: Request, res: Response) => {
-    res.json({ comments: commentsStore });
+  // Comments endpoints scoped by programId
+  app.get('/api/broadcast/comments', (req: Request, res: Response) => {
+    const room = getOrCreateRoom(req.query.programId);
+    res.json({ programId: room.programId, comments: room.commentsStore });
   });
 
   app.post('/api/broadcast/comments', (req: Request, res: Response) => {
+    const room = getOrCreateRoom(req.query.programId || req.body?.programId);
     const { author, location, message } = req.body as {
       author?: string;
       location?: string;
@@ -369,25 +532,33 @@ async function startServer() {
       message: cleanMessage,
       createdAt: Date.now(),
     };
-    commentsStore.unshift(item);
-    if (commentsStore.length > 100) commentsStore.length = 100;
+    room.commentsStore.unshift(item);
+    if (room.commentsStore.length > 100) room.commentsStore.length = 100;
 
-    broadcastAll('comments', { comments: commentsStore });
-    res.json({ ok: true, comment: item, comments: commentsStore });
+    broadcastAll(room, 'comments', {
+      programId: room.programId,
+      comments: room.commentsStore,
+    });
+    res.json({ ok: true, comment: item, comments: room.commentsStore });
   });
 
   app.delete('/api/broadcast/comments/:id', (req: Request, res: Response) => {
+    const room = getOrCreateRoom(req.query.programId);
     const targetId = req.params.id;
-    const idx = commentsStore.findIndex((c) => c.id === targetId);
+    const idx = room.commentsStore.findIndex((c) => c.id === targetId);
     if (idx !== -1) {
-      commentsStore.splice(idx, 1);
-      broadcastAll('comments', { comments: commentsStore });
+      room.commentsStore.splice(idx, 1);
+      broadcastAll(room, 'comments', {
+        programId: room.programId,
+        comments: room.commentsStore,
+      });
     }
-    res.json({ ok: true, comments: commentsStore });
+    res.json({ ok: true, comments: room.commentsStore });
   });
 
-  // SSE stream for live viewers and broadcaster WebRTC signaling
+  // SSE stream for live viewers and broadcaster WebRTC signaling scoped by programId
   app.get('/api/broadcast/events', (req: Request, res: Response) => {
+    const room = getOrCreateRoom(req.query.programId);
     const roleParam = req.query.role === 'broadcaster' ? 'broadcaster' : 'viewer';
     const clientId =
       typeof req.query.clientId === 'string' && req.query.clientId
@@ -401,26 +572,27 @@ async function startServer() {
     res.socket?.setNoDelay?.(true);
     res.flushHeaders?.();
 
-    clients.set(clientId, { id: clientId, role: roleParam, res });
+    room.clients.set(clientId, { id: clientId, role: roleParam, res });
 
     sendSse(res, 'init', {
+      programId: room.programId,
       clientId,
-      state: currentState,
-      frame: latestFrameDataUrl,
-      viewerCount: getViewerCount(),
-      audienceCount: getAudienceDisplayCount(),
-      broadcasterOnline: getBroadcasterOnline(),
-      comments: commentsStore,
+      state: room.currentState,
+      frame: room.latestFrameDataUrl,
+      viewerCount: getViewerCount(room),
+      audienceCount: getAudienceDisplayCount(room),
+      broadcasterOnline: getBroadcasterOnline(room),
+      comments: room.commentsStore,
     });
 
-    broadcastPresence();
+    broadcastPresence(room);
 
-    if (roleParam === 'viewer' && currentState.isLive) {
-      broadcastAll('viewer-joined', { viewerId: clientId }, 'broadcaster');
+    if (roleParam === 'viewer' && room.currentState.isLive) {
+      broadcastAll(room, 'viewer-joined', { viewerId: clientId }, 'broadcaster');
     }
 
-    if (roleParam === 'broadcaster' && currentState.isLive) {
-      notifyBroadcasterOfWaitingViewers();
+    if (roleParam === 'broadcaster' && room.currentState.isLive) {
+      notifyBroadcasterOfWaitingViewers(room);
     }
 
     const keepAlive = setInterval(() => {
@@ -433,58 +605,60 @@ async function startServer() {
 
     req.on('close', () => {
       clearInterval(keepAlive);
-      clients.delete(clientId);
+      room.clients.delete(clientId);
       if (roleParam === 'viewer') {
-        broadcastAll('viewer-left', { viewerId: clientId }, 'broadcaster');
+        broadcastAll(room, 'viewer-left', { viewerId: clientId }, 'broadcaster');
       }
-      broadcastPresence();
+      broadcastPresence(room);
     });
   });
 
-  // Broadcaster updates live program state
+  // Broadcaster updates live program state scoped by programId
   app.post('/api/broadcast/state', (req: Request, res: Response) => {
     const body = req.body as Partial<LiveBroadcastState>;
-    const wasLive = currentState.isLive;
+    const room = getOrCreateRoom(req.query.programId || body.programId);
+    const wasLive = room.currentState.isLive;
     const nextIsLive =
-      typeof body.isLive === 'boolean' ? body.isLive : currentState.isLive;
+      typeof body.isLive === 'boolean' ? body.isLive : room.currentState.isLive;
 
     if (nextIsLive && !wasLive) {
-      simulatedAudience = 2569; // Natural start right above 2567
-      liveTick = 0;
+      room.simulatedAudience = 2569; // Natural start right above 2567
+      room.liveTick = 0;
     } else if (!nextIsLive && wasLive) {
-      simulatedAudience = 36;
-      offlineTick = 0;
+      room.simulatedAudience = 36;
+      room.offlineTick = 0;
     }
 
-    currentState = {
-      ...currentState,
+    room.currentState = {
+      ...room.currentState,
       ...body,
+      programId: room.programId,
       sponsors: Array.isArray(body.sponsors)
         ? body.sponsors
-        : currentState.sponsors,
+        : room.currentState.sponsors,
       isLive: nextIsLive,
       startedAt:
         nextIsLive && !wasLive
           ? Date.now()
           : !nextIsLive
           ? null
-          : currentState.startedAt,
+          : room.currentState.startedAt,
       updatedAt: Date.now(),
     };
 
     if (!nextIsLive) {
-      latestFrameDataUrl = null;
-      latestFrameSeq = 0;
+      room.latestFrameDataUrl = null;
+      room.latestFrameSeq = 0;
     }
 
-    broadcastAll('state', currentState);
-    broadcastPresence();
+    broadcastAll(room, 'state', room.currentState);
+    broadcastPresence(room);
 
     if (nextIsLive && !wasLive) {
-      notifyBroadcasterOfWaitingViewers();
+      notifyBroadcasterOfWaitingViewers(room);
     }
 
-    res.json({ ok: true, state: currentState });
+    res.json({ ok: true, programId: room.programId, state: room.currentState });
   });
 
   // Broadcaster pushes live composited video frame (binary WebP/JPEG or JSON data URL)
@@ -492,17 +666,18 @@ async function startServer() {
     '/api/broadcast/frame',
     express.raw({ type: 'image/*', limit: '2mb' }),
     (req: Request, res: Response) => {
-      if (!currentState.isLive) {
+      const room = getOrCreateRoom(req.query.programId);
+      if (!room.currentState.isLive) {
         res.json({ ok: true });
         return;
       }
       const seqParam = Number(req.query.seq);
       if (Number.isFinite(seqParam) && seqParam > 0) {
-        if (seqParam <= latestFrameSeq) {
+        if (seqParam <= room.latestFrameSeq) {
           res.json({ ok: true, skipped: true });
           return;
         }
-        latestFrameSeq = seqParam;
+        room.latestFrameSeq = seqParam;
       }
       let frame: string | undefined;
       if (Buffer.isBuffer(req.body) && req.body.length > 0) {
@@ -515,10 +690,15 @@ async function startServer() {
         }
       }
       if (frame) {
-        latestFrameDataUrl = frame;
-        latestFrameUpdatedAt = Date.now();
-        if (getViewerCount() > 0) {
-          broadcastAll('frame', { frame, ts: latestFrameUpdatedAt }, 'viewer');
+        room.latestFrameDataUrl = frame;
+        room.latestFrameUpdatedAt = Date.now();
+        if (getViewerCount(room) > 0) {
+          broadcastAll(
+            room,
+            'frame',
+            { frame, ts: room.latestFrameUpdatedAt },
+            'viewer'
+          );
         }
       }
       res.json({ ok: true });
@@ -527,37 +707,49 @@ async function startServer() {
 
   // Broadcaster pushes live mixed audio chunks (PCM16 base64)
   app.post('/api/broadcast/audio', (req: Request, res: Response) => {
+    const room = getOrCreateRoom(req.query.programId || req.body?.programId);
     const { pcm16, sampleRate } = req.body as {
       pcm16?: string;
       sampleRate?: number;
     };
     if (
-      currentState.isLive &&
+      room.currentState.isLive &&
       typeof pcm16 === 'string' &&
       pcm16.length > 0 &&
       typeof sampleRate === 'number'
     ) {
-      broadcastAll('audio', { pcm16, sampleRate, ts: Date.now() }, 'viewer');
+      broadcastAll(
+        room,
+        'audio',
+        { pcm16, sampleRate, ts: Date.now() },
+        'viewer'
+      );
     }
     res.json({ ok: true });
   });
 
-  // WebRTC Signaling Relay
+  // WebRTC Signaling Relay scoped by programId
   app.post('/api/rtc/signal', (req: Request, res: Response) => {
+    const room = getOrCreateRoom(req.query.programId || req.body?.programId);
     const { targetId, fromId, type, payload } = req.body as {
       targetId?: string;
       fromId?: string;
       type?: string;
       payload?: unknown;
     };
-    if (targetId && clients.has(targetId)) {
-      const target = clients.get(targetId)!;
+    if (targetId && room.clients.has(targetId)) {
+      const target = room.clients.get(targetId)!;
       sendSse(target.res, 'rtc-signal', { fromId, type, payload });
       res.json({ ok: true });
       return;
     }
     if (targetId === 'broadcaster') {
-      broadcastAll('rtc-signal', { fromId, type, payload }, 'broadcaster');
+      broadcastAll(
+        room,
+        'rtc-signal',
+        { fromId, type, payload },
+        'broadcaster'
+      );
       res.json({ ok: true });
       return;
     }
@@ -758,18 +950,33 @@ async function startServer() {
         res.status(400).json({ ok: false, error: result.error });
         return;
       }
+      getOrCreateRoom(result.program.id);
       res.json({ ok: true, program: result.program, programs: listPrograms() });
     }
   );
 
   app.put(
     '/api/producer/programs/:id',
-    requireStaff((r) => r.canCreatePrograms),
+    requireStaff((r) => r.canCreatePrograms || r.canOperateStudio || r.canEditSite),
     (req: Request, res: Response) => {
       const result = updateProgram(req.params.id, req.body || {});
       if (!result.ok) {
         res.status(404).json({ ok: false, error: result.error });
         return;
+      }
+      const existingRoom = broadcastRooms.get(req.params.id);
+      if (existingRoom) {
+        existingRoom.currentState.showName = result.program.title;
+        existingRoom.currentState.overlays.channelName = result.program.title;
+        if (result.program.schedule) {
+          existingRoom.currentState.overlays.lowerThirdSubtitle = `${result.program.schedule}${
+            result.program.hostTeam ? ` · ${result.program.hostTeam}` : ''
+          }`;
+        }
+        if (result.program.logoUrl) {
+          existingRoom.currentState.overlays.logoUrl = result.program.logoUrl;
+        }
+        broadcastAll(existingRoom, 'state', existingRoom.currentState);
       }
       res.json({ ok: true, program: result.program, programs: listPrograms() });
     }
@@ -784,9 +991,311 @@ async function startServer() {
         res.status(404).json({ ok: false, error: 'Programa no encontrado.' });
         return;
       }
+      broadcastRooms.delete(req.params.id);
       res.json({ ok: true, programs: listPrograms() });
     }
   );
+
+  // Past Episodes Video Archive Endpoints (Per Program)
+  app.get('/api/producer/programs/:id/videos', (req: Request, res: Response) => {
+    const programId = normalizeProgramId(req.params.id);
+    res.json({
+      ok: true,
+      programId,
+      videos: listProgramVideos(programId),
+    });
+  });
+
+  app.post(
+    '/api/producer/programs/:id/videos/upload',
+    requireStaff((r) => r.canCreatePrograms || r.canOperateStudio || r.canEditSite),
+    (req: AuthenticatedRequest, res: Response) => {
+      const programId = normalizeProgramId(req.params.id);
+      const programExists = listPrograms().some((p) => p.id === programId);
+      if (!programExists) {
+        res.status(404).json({ ok: false, error: 'Programa no encontrado.' });
+        return;
+      }
+
+      const contentType = String(req.headers['content-type'] || '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+      const origName = decodeSafeHeader(
+        req.headers['x-video-filename'],
+        'episodio.mp4',
+        120
+      );
+      const origExt = path.extname(origName).replace('.', '').toLowerCase();
+
+      let ext = VIDEO_EXT_BY_MIME[contentType] || '';
+      if (!ext && (contentType === 'application/octet-stream' || !contentType)) {
+        if (MIME_BY_VIDEO_EXT[origExt]) {
+          ext = origExt;
+        }
+      }
+      if (!ext || !MIME_BY_VIDEO_EXT[ext]) {
+        res.status(400).json({
+          ok: false,
+          error:
+            'Formato de video no permitido. Subí archivos MP4, WebM, MOV, MKV u OGV.',
+        });
+        return;
+      }
+
+      const contentLength = Number(req.headers['content-length'] || 0);
+      if (Number.isFinite(contentLength) && contentLength > MAX_VIDEO_UPLOAD_BYTES) {
+        res.status(413).json({
+          ok: false,
+          error: 'El video supera el máximo permitido de 250 MB.',
+        });
+        return;
+      }
+
+      fs.mkdirSync(VIDEOS_DIR, { recursive: true });
+      const safeFileName = `vid-${Date.now()}-${crypto
+        .randomBytes(6)
+        .toString('hex')}.${ext}`;
+      const targetPath = resolveSafeVideoPath(safeFileName);
+      if (!targetPath) {
+        res.status(500).json({ ok: false, error: 'Ruta de guardado inválida.' });
+        return;
+      }
+
+      const writeStream = fs.createWriteStream(targetPath);
+      let receivedBytes = 0;
+      let aborted = false;
+
+      const cleanupPartial = () => {
+        try {
+          writeStream.destroy();
+        } catch {
+          // ignore
+        }
+        if (fs.existsSync(targetPath)) {
+          try {
+            fs.unlinkSync(targetPath);
+          } catch {
+            // ignore
+          }
+        }
+      };
+
+      req.on('data', (chunk: Buffer) => {
+        if (aborted) return;
+        receivedBytes += chunk.length;
+        if (receivedBytes > MAX_VIDEO_UPLOAD_BYTES) {
+          aborted = true;
+          cleanupPartial();
+          if (!res.headersSent) {
+            res.status(413).json({
+              ok: false,
+              error: 'El video supera el máximo permitido de 250 MB.',
+            });
+          }
+          req.destroy();
+          return;
+        }
+        if (!writeStream.write(chunk)) {
+          req.pause();
+          writeStream.once('drain', () => {
+            if (!aborted) req.resume();
+          });
+        }
+      });
+
+      req.on('end', () => {
+        if (aborted) return;
+        if (receivedBytes === 0) {
+          cleanupPartial();
+          res.status(400).json({ ok: false, error: 'El archivo de video está vacío.' });
+          return;
+        }
+        writeStream.end(() => {
+          const title = decodeSafeHeader(
+            req.headers['x-video-title'],
+            origName.replace(/\.[^.]+$/, '') || 'Emisión anterior',
+            120
+          );
+          const episodeLabel = decodeSafeHeader(
+            req.headers['x-video-episode'],
+            new Date().toLocaleDateString('es-AR'),
+            60
+          );
+          const description = decodeSafeHeader(
+            req.headers['x-video-description'],
+            '',
+            500
+          );
+          const durationLabel = decodeSafeHeader(
+            req.headers['x-video-duration'],
+            'HD',
+            30
+          );
+
+          const saved = addProgramVideo({
+            programId,
+            title,
+            episodeLabel,
+            description,
+            durationLabel,
+            videoUrl: `/api/videos/${safeFileName}`,
+            isUploadedFile: true,
+            fileName: safeFileName,
+            mimeType: MIME_BY_VIDEO_EXT[ext],
+            fileSizeBytes: receivedBytes,
+            uploadedBy: req.staffUser?.username || 'staff',
+          });
+
+          if (!saved.ok) {
+            cleanupPartial();
+            res.status(400).json({ ok: false, error: saved.error });
+            return;
+          }
+
+          res.json({
+            ok: true,
+            video: saved.video,
+            videos: listProgramVideos(programId),
+          });
+        });
+      });
+
+      req.on('error', () => {
+        if (!aborted) {
+          aborted = true;
+          cleanupPartial();
+          if (!res.headersSent) {
+            res.status(500).json({ ok: false, error: 'Error al recibir el video.' });
+          }
+        }
+      });
+    }
+  );
+
+  app.post(
+    '/api/producer/programs/:id/videos',
+    requireStaff((r) => r.canCreatePrograms || r.canOperateStudio || r.canEditSite),
+    (req: AuthenticatedRequest, res: Response) => {
+      const programId = normalizeProgramId(req.params.id);
+      const programExists = listPrograms().some((p) => p.id === programId);
+      if (!programExists) {
+        res.status(404).json({ ok: false, error: 'Programa no encontrado.' });
+        return;
+      }
+
+      const body = req.body as {
+        title?: string;
+        episodeLabel?: string;
+        description?: string;
+        durationLabel?: string;
+        videoUrl?: string;
+      };
+
+      const saved = addProgramVideo({
+        programId,
+        title: String(body.title || ''),
+        episodeLabel: body.episodeLabel,
+        description: body.description,
+        durationLabel: body.durationLabel,
+        videoUrl: String(body.videoUrl || ''),
+        isUploadedFile: false,
+        uploadedBy: req.staffUser?.username || 'staff',
+      });
+
+      if (!saved.ok) {
+        res.status(400).json({ ok: false, error: saved.error });
+        return;
+      }
+
+      res.json({
+        ok: true,
+        video: saved.video,
+        videos: listProgramVideos(programId),
+      });
+    }
+  );
+
+  app.patch(
+    '/api/producer/programs/:id/videos/:videoId',
+    requireStaff((r) => r.canCreatePrograms || r.canOperateStudio || r.canEditSite),
+    (req: Request, res: Response) => {
+      const programId = normalizeProgramId(req.params.id);
+      const result = updateProgramVideo(req.params.videoId, req.body || {});
+      if (!result.ok) {
+        res.status(404).json({ ok: false, error: result.error });
+        return;
+      }
+      res.json({
+        ok: true,
+        video: result.video,
+        videos: listProgramVideos(programId),
+      });
+    }
+  );
+
+  app.delete(
+    '/api/producer/programs/:id/videos/:videoId',
+    requireStaff((r) => r.canCreatePrograms || r.canOperateStudio || r.canEditSite),
+    (req: Request, res: Response) => {
+      const programId = normalizeProgramId(req.params.id);
+      const ok = deleteProgramVideo(req.params.videoId);
+      if (!ok) {
+        res.status(404).json({ ok: false, error: 'Video no encontrado.' });
+        return;
+      }
+      res.json({ ok: true, videos: listProgramVideos(programId) });
+    }
+  );
+
+  // HTTP Range Video Streaming for Uploaded Archive Episodes
+  app.get('/api/videos/:filename', (req: Request, res: Response) => {
+    const safePath = resolveSafeVideoPath(req.params.filename);
+    if (!safePath || !fs.existsSync(safePath)) {
+      res.status(404).json({ ok: false, error: 'Video no encontrado.' });
+      return;
+    }
+
+    const stat = fs.statSync(safePath);
+    const totalSize = stat.size;
+    const ext = path.extname(safePath).replace('.', '').toLowerCase();
+    const contentType = MIME_BY_VIDEO_EXT[ext] || 'video/mp4';
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+      if (
+        Number.isNaN(start) ||
+        Number.isNaN(end) ||
+        start < 0 ||
+        end >= totalSize ||
+        start > end
+      ) {
+        res.status(416).setHeader('Content-Range', `bytes */${totalSize}`).end();
+        return;
+      }
+      const chunkSize = end - start + 1;
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400',
+      });
+      fs.createReadStream(safePath, { start, end }).pipe(res);
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Length': totalSize,
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=86400',
+    });
+    fs.createReadStream(safePath).pipe(res);
+  });
 
   // Program Creation Requests ("Pedir para crear programas")
   app.post('/api/producer/program-requests', (req: Request, res: Response) => {
@@ -838,6 +1347,9 @@ async function startServer() {
       if (!result.ok) {
         res.status(404).json({ ok: false, error: result.error });
         return;
+      }
+      if (result.createdProgram) {
+        getOrCreateRoom(result.createdProgram.id);
       }
       res.json({
         ok: true,

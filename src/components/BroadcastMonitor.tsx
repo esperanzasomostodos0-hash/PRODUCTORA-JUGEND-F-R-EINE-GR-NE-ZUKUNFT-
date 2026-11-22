@@ -194,40 +194,7 @@ export const BroadcastMonitor: React.FC<BroadcastMonitorProps> = ({
             </p>
             <p className="mt-2 text-xs text-slate-300">{scene.description}</p>
           </div>
-        ) : useLiveFeed ? (
-          <div className="absolute inset-0">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-            {scene.layoutMode === 'pip' && imageSrc && !imgFailed && (
-              <div className="absolute top-10 right-3 w-[28%] aspect-video border border-white/30 bg-slate-950 shadow-lg overflow-hidden rounded-sm">
-                <img
-                  src={imageSrc}
-                  alt="PIP"
-                  referrerPolicy="no-referrer"
-                  onError={() => setImgFailed(true)}
-                  className="w-full h-full object-cover object-right scale-125"
-                />
-                <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/75 text-[9px] font-mono text-slate-200">
-                  PIP
-                </div>
-              </div>
-            )}
-          </div>
-        ) : useUploadedVideo ? (
-          <video
-            src={scene.mediaUrl}
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        ) : scene.layoutMode === 'split' ? (
+        ) : scene.layoutMode === 'split' && !useUploadedVideo ? (
           <div className="absolute inset-0 grid grid-cols-2 gap-1 bg-black p-1">
             <div className="relative overflow-hidden bg-slate-900">
               {!imgFailed ? (
@@ -266,10 +233,43 @@ export const BroadcastMonitor: React.FC<BroadcastMonitorProps> = ({
                 <div className="w-full h-full bg-slate-800" />
               )}
               <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/75 text-[10px] font-mono text-white">
-                INVITADO
+                {liveStream ? scene.cameraLabel : 'INVITADO'}
               </div>
             </div>
           </div>
+        ) : useLiveFeed ? (
+          <div className="absolute inset-0">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+            {scene.layoutMode === 'pip' && imageSrc && !imgFailed && (
+              <div className="absolute top-10 right-3 w-[28%] aspect-video border border-white/30 bg-slate-950 shadow-lg overflow-hidden rounded-sm">
+                <img
+                  src={imageSrc}
+                  alt="PIP"
+                  referrerPolicy="no-referrer"
+                  onError={() => setImgFailed(true)}
+                  className="w-full h-full object-cover object-right scale-125"
+                />
+                <div className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/75 text-[9px] font-mono text-slate-200">
+                  PIP
+                </div>
+              </div>
+            )}
+          </div>
+        ) : useUploadedVideo ? (
+          <video
+            src={scene.mediaUrl}
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover"
+          />
         ) : (
           <div className="absolute inset-0">
             {!imgFailed ? (

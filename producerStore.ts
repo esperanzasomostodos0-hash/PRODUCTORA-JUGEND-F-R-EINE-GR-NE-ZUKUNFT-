@@ -1,25 +1,56 @@
 import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   PRODUCER_ROLES,
-  ProducerInquiry,
-  ProducerProgram,
-  ProducerRole,
-  ProgramArchiveVideo,
-  ProgramCreationRequest,
-  ProgramRequestStatus,
-  SiteContentConfig,
-  StaffUserPublic,
+  type ProducerInquiry,
+  type ProducerProgram,
+  type ProducerRole,
+  type ProgramArchiveVideo,
+  type ProgramCreationRequest,
+  type ProgramRequestStatus,
+  type SiteContentConfig,
+  type StaffUserPublic,
 } from './src/types/producer.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.resolve(__dirname, 'data');
+const BUNDLE_DATA_DIR = fs.existsSync(path.resolve(__dirname, 'data'))
+  ? path.resolve(__dirname, 'data')
+  : path.resolve(process.cwd(), 'data');
+const SEED_DB_FILE = path.resolve(BUNDLE_DATA_DIR, 'producer-db.json');
+
+const IS_SERVERLESS_RUNTIME = Boolean(
+  process.env.VERCEL || process.env.NOW_REGION || process.env.AWS_LAMBDA_FUNCTION_NAME
+);
+
+function resolveWritableDataDir(): string {
+  const configured = process.env.PRODUCER_DATA_DIR?.trim();
+  if (configured) {
+    return path.resolve(configured);
+  }
+  if (!IS_SERVERLESS_RUNTIME) {
+    try {
+      fs.mkdirSync(BUNDLE_DATA_DIR, { recursive: true });
+      fs.accessSync(BUNDLE_DATA_DIR, fs.constants.W_OK);
+      return BUNDLE_DATA_DIR;
+    } catch {
+      // Fall back to OS temp directory if bundle directory is read-only
+    }
+  }
+  return path.join(os.tmpdir(), 'jugend-producer-data');
+}
+
+const DATA_DIR = resolveWritableDataDir();
 export const VIDEOS_DIR = path.resolve(DATA_DIR, 'videos');
 const DB_FILE = path.resolve(DATA_DIR, 'producer-db.json');
+
+export function isServerlessEphemeralStorage(): boolean {
+  return IS_SERVERLESS_RUNTIME && !process.env.PRODUCER_DATA_DIR?.trim();
+}
 
 interface StoredUserRecord extends StaffUserPublic {
   passwordHash: string;
@@ -256,36 +287,51 @@ export const DEFAULT_PROGRAMS: ProducerProgram[] = [
   },
 ];
 
-// Ephemeral fallback signing key when SESSION_SECRET env var isn't set
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+function parseDatabaseFile(filePath: string): ProducerDatabase | null {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw) as Partial<ProducerDatabase>;
+    return {
+      adminAccount: parsed.adminAccount || null,
+      users: Array.isArray(parsed.users) ? parsed.users : [],
+      siteContent: {
+        ...DEFAULT_SITE_CONTENT,
+        ...(parsed.siteContent || {}),
+      },
+      programs:
+        Array.isArray(parsed.programs) && parsed.programs.length > 0
+          ? parsed.programs
+          : DEFAULT_PROGRAMS,
+      programRequests: Array.isArray(parsed.programRequests)
+        ? parsed.programRequests
+        : [],
+      inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
+      videos: Array.isArray(parsed.videos) ? parsed.videos : [],
+    };
+  } catch (err) {
+    console.warn(`Error loading ${filePath}, checking fallback defaults:`, err);
+    return null;
+  }
+}
 
 function loadDatabase(): ProducerDatabase {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const raw = fs.readFileSync(DB_FILE, 'utf8');
-      const parsed = JSON.parse(raw) as Partial<ProducerDatabase>;
-      return {
-        adminAccount: parsed.adminAccount || null,
-        users: Array.isArray(parsed.users) ? parsed.users : [],
-        siteContent: {
-          ...DEFAULT_SITE_CONTENT,
-          ...(parsed.siteContent || {}),
-        },
-        programs:
-          Array.isArray(parsed.programs) && parsed.programs.length > 0
-            ? parsed.programs
-            : DEFAULT_PROGRAMS,
-        programRequests: Array.isArray(parsed.programRequests)
-          ? parsed.programRequests
-          : [],
-        inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
-        videos: Array.isArray(parsed.videos) ? parsed.videos : [],
-      };
+  const fromWritable = parseDatabaseFile(DB_FILE);
+  if (fromWritable) return fromWritable;
+
+  if (SEED_DB_FILE !== DB_FILE) {
+    const fromSeed = parseDatabaseFile(SEED_DB_FILE);
+    if (fromSeed) {
+      try {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+        fs.writeFileSync(DB_FILE, JSON.stringify(fromSeed, null, 2), 'utf8');
+      } catch {
+        // ignore ephemeral copy error
+      }
+      return fromSeed;
     }
-  } catch (err) {
-    console.warn('Error loading producer-db.json, initializing clean defaults:', err);
   }
+
   return {
     adminAccount: null,
     users: [],
@@ -298,6 +344,41 @@ function loadDatabase(): ProducerDatabase {
 }
 
 let db: ProducerDatabase = loadDatabase();
+
+function resolveSessionSecret(): string {
+  const envSecret = process.env.SESSION_SECRET?.trim();
+  if (envSecret) return envSecret;
+
+  if (IS_SERVERLESS_RUNTIME) {
+    const seed = [
+      process.env.VERCEL_PROJECT_PRODUCTION_URL,
+      process.env.VERCEL_URL,
+      process.env.VERCEL_GIT_COMMIT_SHA,
+      process.env.ADMIN_USERNAME,
+      db.adminAccount?.passwordHash,
+      'jugend-gruene-zukunft-session-fallback',
+    ]
+      .filter(Boolean)
+      .join(':');
+    return crypto.createHash('sha256').update(seed).digest('hex');
+  }
+
+  const secretFile = path.join(DATA_DIR, '.session-secret');
+  try {
+    if (fs.existsSync(secretFile)) {
+      const saved = fs.readFileSync(secretFile, 'utf8').trim();
+      if (saved.length >= 32) return saved;
+    }
+    const generated = crypto.randomBytes(32).toString('hex');
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(secretFile, generated, { encoding: 'utf8', mode: 0o600 });
+    return generated;
+  } catch {
+    return crypto.randomBytes(32).toString('hex');
+  }
+}
+
+const SESSION_SECRET = resolveSessionSecret();
 
 function saveDatabase() {
   try {

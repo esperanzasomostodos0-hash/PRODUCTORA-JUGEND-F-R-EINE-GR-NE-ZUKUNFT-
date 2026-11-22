@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import express from 'express';
-import type { NextFunction, Request, Response } from 'express';
+import type { Express, NextFunction, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,6 +17,7 @@ import {
   deleteProgramVideo,
   deleteStaffUser,
   getSiteContent,
+  isServerlessEphemeralStorage,
   listInquiries,
   listProgramRequests,
   listProgramVideos,
@@ -35,9 +36,9 @@ import {
 } from './producerStore.ts';
 import {
   PRODUCER_ROLES,
-  ProducerRole,
-  ProgramRequestStatus,
-  StaffUserPublic,
+  type ProducerRole,
+  type ProgramRequestStatus,
+  type StaffUserPublic,
 } from './src/types/producer.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -433,7 +434,6 @@ function scheduleAudienceTick() {
     scheduleAudienceTick();
   }, delayMs);
 }
-scheduleAudienceTick();
 
 const MAX_VIDEO_UPLOAD_BYTES = 250 * 1024 * 1024; // 250 MB
 
@@ -462,14 +462,21 @@ function decodeSafeHeader(val: unknown, fallback = '', maxLen = 400): string {
   }
 }
 
-async function startServer() {
+export function createApiApp(): Express {
   const app = express();
-  const port = Number(process.env.PORT) || 3000;
 
   // Ensure default catalog rooms exist on boot
   listPrograms().forEach((p) => getOrCreateRoom(p.id));
 
   app.use(express.json({ limit: '8mb' }));
+
+  app.get('/api/health', (_req: Request, res: Response) => {
+    res.json({
+      ok: true,
+      serverless: isServerlessEphemeralStorage(),
+      timestamp: Date.now(),
+    });
+  });
 
   // Summary of all broadcast rooms (live status per program)
   app.get('/api/broadcast/rooms', (_req: Request, res: Response) => {
@@ -1052,7 +1059,15 @@ async function startServer() {
         return;
       }
 
-      fs.mkdirSync(VIDEOS_DIR, { recursive: true });
+      try {
+        fs.mkdirSync(VIDEOS_DIR, { recursive: true });
+      } catch {
+        res.status(500).json({
+          ok: false,
+          error: 'No se pudo preparar el directorio de videos en el servidor.',
+        });
+        return;
+      }
       const safeFileName = `vid-${Date.now()}-${crypto
         .randomBytes(6)
         .toString('hex')}.${ext}`;
@@ -1062,7 +1077,16 @@ async function startServer() {
         return;
       }
 
-      const writeStream = fs.createWriteStream(targetPath);
+      let writeStream: fs.WriteStream;
+      try {
+        writeStream = fs.createWriteStream(targetPath);
+      } catch {
+        res.status(500).json({
+          ok: false,
+          error: 'No se pudo escribir el archivo de video en el servidor.',
+        });
+        return;
+      }
       let receivedBytes = 0;
       let aborted = false;
 
@@ -1386,6 +1410,16 @@ async function startServer() {
     res.json({ ok: true, inquiry: result.inquiry });
   });
 
+  app.use('/api', (_req: Request, res: Response) => {
+    res.status(404).json({ ok: false, error: 'Ruta API no encontrada.' });
+  });
+
+  return app;
+}
+
+async function startServer() {
+  const app = createApiApp();
+  const port = Number(process.env.PORT) || 3000;
   const isProd = process.env.NODE_ENV === 'production';
 
   if (!isProd) {
@@ -1396,7 +1430,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(__dirname, 'dist');
+    const distPath = fs.existsSync(path.resolve(__dirname, 'dist'))
+      ? path.resolve(__dirname, 'dist')
+      : path.resolve(process.cwd(), 'dist');
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));
       app.get('/{*splat}', (_req: Request, res: Response) => {
@@ -1405,12 +1441,25 @@ async function startServer() {
     }
   }
 
+  scheduleAudienceTick();
+
   app.listen(port, '0.0.0.0', () => {
     console.log(`MesaControl TV server listening on http://0.0.0.0:${port}`);
   });
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+const isVercelRuntime = Boolean(
+  process.env.VERCEL || process.env.NOW_REGION || process.env.AWS_LAMBDA_FUNCTION_NAME
+);
+const entryArg = process.argv[1] ? path.resolve(process.argv[1]) : '';
+const isDirectServerRun =
+  entryArg === __filename ||
+  entryArg.endsWith(`${path.sep}server.ts`) ||
+  entryArg.endsWith(`${path.sep}server.js`);
+
+if (!isVercelRuntime && isDirectServerRun) {
+  startServer().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}

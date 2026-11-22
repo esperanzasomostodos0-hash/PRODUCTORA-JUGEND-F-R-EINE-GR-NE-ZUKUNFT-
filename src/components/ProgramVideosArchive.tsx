@@ -236,7 +236,15 @@ export const ProgramVideosArchive: React.FC<ProgramVideosArchiveProps> = ({
               const parsed = JSON.parse(xhr.responseText);
               resolve(parsed);
             } catch {
-              reject(new Error('Respuesta inválida del servidor.'));
+              if (xhr.status === 413) {
+                reject(
+                  new Error(
+                    'El servidor limita subidas directas a 4.5 MB. Para videos pesados usá la pestaña "Enlace Directo URL" (MP4/WebM externo).'
+                  )
+                );
+                return;
+              }
+              reject(new Error(`Respuesta inválida del servidor (HTTP ${xhr.status}).`));
             }
           };
 

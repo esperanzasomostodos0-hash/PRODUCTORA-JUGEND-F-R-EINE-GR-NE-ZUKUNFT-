@@ -439,7 +439,7 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
                 className="min-h-[40px] px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
               >
                 <MonitorPlay className="w-3.5 h-3.5" />
-                <span>Estudio en Vivo</span>
+                <span>MesaControl TV</span>
               </button>
             )}
           </div>
@@ -771,7 +771,7 @@ export const ProducerAdminPanel: React.FC<ProducerAdminPanelProps> = ({
                   required
                   value={progTitle}
                   onChange={(e) => setProgTitle(e.target.value)}
-                  placeholder="Ej: Noche de Estudio / EcoDebate"
+                  placeholder="Ej: Noche de Debate / EcoDebate"
                   className="w-full min-h-[40px] px-3 py-2 bg-[#050708] border border-white/15 rounded-lg text-sm text-white"
                 />
               </div>

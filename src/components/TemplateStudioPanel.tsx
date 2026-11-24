@@ -20,7 +20,7 @@ const COLOR_SWATCHES = [
   { label: 'Esmeralda Vivo', hex: '#10B981' },
   { label: 'Rojo Prensa', hex: '#DC2626' },
   { label: 'Ámbar Magazine', hex: '#D97706' },
-  { label: 'Azul Estudio', hex: '#2563EB' },
+  { label: 'Azul TV', hex: '#2563EB' },
 ];
 
 export const TemplateStudioPanel: React.FC<TemplateStudioPanelProps> = ({

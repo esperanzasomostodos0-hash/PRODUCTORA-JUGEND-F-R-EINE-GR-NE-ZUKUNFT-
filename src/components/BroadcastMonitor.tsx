@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Edit3, MonitorUp, VideoOff } from 'lucide-react';
+import { Camera, Edit3, MonitorUp, Radio, VideoOff } from 'lucide-react';
 import { BroadcastScene, OverlayState, TransitionType } from '../types/broadcast';
+import { OFFICIAL_PRODUCER_LOGO } from '../data/tvTemplates';
 
 interface BroadcastMonitorProps {
   role: 'PGM' | 'PVW';
@@ -189,10 +190,12 @@ export const BroadcastMonitor: React.FC<BroadcastMonitorProps> = ({
                 style={{ backgroundColor: accentHex }}
               />
             )}
-            <p className="font-display text-lg sm:text-xl font-bold tracking-tight text-white max-w-md text-balance">
-              {scene.slateHeadline || scene.name}
+            <p className="font-display text-xl sm:text-2xl font-extrabold tracking-tight text-white max-w-md text-balance uppercase">
+              {overlays.channelName || scene.slateHeadline || scene.name}
             </p>
-            <p className="mt-2 text-xs text-slate-300">{scene.description}</p>
+            <p className="mt-2 px-4 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-xs sm:text-sm font-mono font-bold tracking-[0.25em] text-emerald-300 uppercase">
+              YA VOLVEMOS
+            </p>
           </div>
         ) : scene.layoutMode === 'split' && !useUploadedVideo ? (
           <div className="absolute inset-0 grid grid-cols-2 gap-1 bg-black p-1">
@@ -209,7 +212,7 @@ export const BroadcastMonitor: React.FC<BroadcastMonitorProps> = ({
                 <div className="w-full h-full bg-slate-900" />
               )}
               <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/75 text-[10px] font-mono text-white">
-                ESTUDIO
+                MESA PRINCIPAL
               </div>
             </div>
             <div className="relative overflow-hidden bg-slate-900">
@@ -562,6 +565,101 @@ export const BroadcastMonitor: React.FC<BroadcastMonitorProps> = ({
                   {overlays.tickerText}
                 </span>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* End-of-Program Closing Slate ("Placa de Cierre") */}
+        {overlays.closingSlate?.active && (
+          <div
+            className="absolute inset-0 z-20 flex flex-col justify-between p-3 sm:p-4 text-center pointer-events-none"
+            style={{
+              background: `radial-gradient(circle at 50% 25%, ${accentHex}44 0%, #050907 78%)`,
+            }}
+          >
+            {/* Top 3 Logos Row: Program + Radio + Production House */}
+            <div className="grid grid-cols-3 items-center gap-2 border-b border-white/15 pb-2">
+              <div className="flex flex-col items-center gap-0.5 min-w-0">
+                {(overlays.closingSlate.programLogoUrl || overlays.logoUrl) ? (
+                  <img
+                    src={overlays.closingSlate.programLogoUrl || overlays.logoUrl}
+                    alt={overlays.closingSlate.programTitle || overlays.channelName}
+                    className="h-7 sm:h-9 w-auto object-contain drop-shadow"
+                  />
+                ) : (
+                  <span className="text-[10px] font-bold text-white truncate">
+                    {overlays.closingSlate.programTitle || overlays.channelName}
+                  </span>
+                )}
+                <span className="text-[8px] sm:text-[9px] font-mono text-slate-300 truncate max-w-full">
+                  {overlays.closingSlate.programTitle || overlays.channelName}
+                </span>
+              </div>
+
+              <div className="flex flex-col items-center gap-0.5 min-w-0">
+                {overlays.closingSlate.radioLogoUrl ? (
+                  <img
+                    src={overlays.closingSlate.radioLogoUrl}
+                    alt={overlays.closingSlate.radioName}
+                    className="h-7 sm:h-9 w-auto object-contain drop-shadow"
+                  />
+                ) : (
+                  <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300">
+                    <Radio className="w-3.5 h-3.5 shrink-0" />
+                    <span className="text-[9px] sm:text-[10px] font-mono font-bold">
+                      88.5 FM
+                    </span>
+                  </div>
+                )}
+                <span className="text-[8px] sm:text-[9px] font-mono text-slate-300 truncate max-w-full">
+                  {overlays.closingSlate.radioName || 'Radioactiva 88.5 FM'}
+                </span>
+              </div>
+
+              <div className="flex flex-col items-center gap-0.5 min-w-0">
+                <img
+                  src={overlays.closingSlate.producerLogoUrl || OFFICIAL_PRODUCER_LOGO}
+                  alt={overlays.closingSlate.producerName}
+                  className="h-7 sm:h-9 w-auto object-contain drop-shadow"
+                />
+                <span className="text-[8px] sm:text-[9px] font-mono text-slate-300 truncate max-w-full">
+                  {overlays.closingSlate.producerName || 'JUGEND FÜR EINE GRÜNE ZUKUNFT'}
+                </span>
+              </div>
+            </div>
+
+            {/* Center Headline & Area Credits */}
+            <div className="flex-1 flex flex-col justify-center gap-2 py-1 min-h-0">
+              <p className="font-display text-xs sm:text-sm font-extrabold tracking-wider text-emerald-300 uppercase">
+                {overlays.closingSlate.headline || 'GRACIAS POR ACOMPAÑARNOS'}
+              </p>
+
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-left max-w-lg mx-auto w-full px-1">
+                {overlays.closingSlate.credits.slice(0, 8).map((item, idx) => (
+                  <div
+                    key={`${item.area}-${idx}`}
+                    className="bg-black/45 border border-white/10 rounded px-2 py-1 min-w-0"
+                  >
+                    <p className="text-[7px] sm:text-[8px] font-mono uppercase tracking-wider text-emerald-400 truncate">
+                      {item.area}
+                    </p>
+                    <p className="text-[9px] sm:text-[10px] font-semibold text-white truncate">
+                      {item.names}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Owner Credit */}
+            <div className="border-t border-white/15 pt-1.5 flex items-center justify-between gap-2 text-[8px] sm:text-[9px] font-mono text-slate-300">
+              <span className="truncate">
+                {overlays.closingSlate.producerName || 'JUGEND FÜR EINE GRÜNE ZUKUNFT'}
+              </span>
+              <span className="text-emerald-300 font-semibold truncate">
+                {overlays.closingSlate.ownerCredit ||
+                  'Dueño y Creador: ALMADA EDUARDO THOMAS'}
+              </span>
             </div>
           </div>
         )}

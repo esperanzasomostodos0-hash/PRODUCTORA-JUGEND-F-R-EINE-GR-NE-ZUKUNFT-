@@ -198,7 +198,7 @@ export const ProducerSiteEditor: React.FC<ProducerSiteEditorProps> = ({
               { id: 'metrics', label: 'Cinta de 4 Datos' },
               { id: 'manifesto', label: 'Manifiesto y Pilares' },
               { id: 'programs', label: 'Encabezado Cartelera' },
-              { id: 'services', label: 'Servicios y Estudio' },
+              { id: 'services', label: 'Servicios y Consola' },
               { id: 'alliances', label: 'Alianzas' },
               { id: 'contact', label: 'Contacto y Pie' },
             ] as const
@@ -246,6 +246,19 @@ export const ProducerSiteEditor: React.FC<ProducerSiteEditorProps> = ({
                     setDraft({ ...draft, mottoText: e.target.value })
                   }
                   className="w-full min-h-[42px] px-3.5 py-2 bg-[#050708] border border-white/15 rounded-lg text-sm text-white"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Dueño y Creador de la Productora
+                </label>
+                <input
+                  type="text"
+                  value={draft.ownerName || 'ALMADA EDUARDO THOMAS'}
+                  onChange={(e) =>
+                    setDraft({ ...draft, ownerName: e.target.value })
+                  }
+                  className="w-full min-h-[42px] px-3.5 py-2 bg-[#050708] border border-white/15 rounded-lg text-sm font-semibold text-emerald-300"
                 />
               </div>
               <div>
@@ -640,7 +653,7 @@ export const ProducerSiteEditor: React.FC<ProducerSiteEditorProps> = ({
 
               <div className="p-4 bg-[#050708] border border-white/10 rounded-lg space-y-3">
                 <div className="text-xs font-mono text-emerald-400">
-                  BLOQUE SALA DE CONTROL / ESTUDIO PROPIO
+                  BLOQUE CONSOLA DIGITAL MESACONTROL TV
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <input
@@ -649,7 +662,7 @@ export const ProducerSiteEditor: React.FC<ProducerSiteEditorProps> = ({
                     onChange={(e) =>
                       setDraft({ ...draft, controlRoomEyebrow: e.target.value })
                     }
-                    placeholder="Subtítulo estudio"
+                    placeholder="Subtítulo consola"
                     className="px-3 py-2 bg-[#090D0F] border border-white/15 rounded-lg text-xs text-white"
                   />
                   <input
@@ -658,7 +671,7 @@ export const ProducerSiteEditor: React.FC<ProducerSiteEditorProps> = ({
                     onChange={(e) =>
                       setDraft({ ...draft, controlRoomTitle: e.target.value })
                     }
-                    placeholder="Título estudio"
+                    placeholder="Título consola"
                     className="px-3 py-2 bg-[#090D0F] border border-white/15 rounded-lg text-xs text-white"
                   />
                 </div>

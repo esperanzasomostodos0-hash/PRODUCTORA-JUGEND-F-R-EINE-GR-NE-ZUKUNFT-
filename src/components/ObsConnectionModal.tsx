@@ -149,7 +149,7 @@ export const ObsConnectionModal: React.FC<ObsConnectionModalProps> = ({
                 ? 'CONECTANDO...'
                 : obsStatus.connectionStatus === 'error'
                 ? 'ERROR DE CONEXIÓN'
-                : 'MODO ESTUDIO LOCAL'}
+                : 'MODO CONSOLA LOCAL'}
             </span>
           </div>
 

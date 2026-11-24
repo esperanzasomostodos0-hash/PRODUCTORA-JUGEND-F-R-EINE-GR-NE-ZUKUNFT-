@@ -78,6 +78,24 @@ export interface BroadcastScene {
   description: string;
 }
 
+export interface ClosingCreditEntry {
+  area: string;
+  names: string;
+}
+
+export interface ClosingSlateConfig {
+  active: boolean;
+  headline: string;
+  programTitle?: string;
+  programLogoUrl?: string;
+  radioName: string;
+  radioLogoUrl?: string;
+  producerName: string;
+  producerLogoUrl?: string;
+  ownerCredit: string;
+  credits: ClosingCreditEntry[];
+}
+
 export interface OverlayState {
   showLowerThird: boolean;
   lowerThirdTitle: string;
@@ -98,6 +116,7 @@ export interface OverlayState {
   activeBannerTitle?: ActiveTvTitle | null;
   activeGuestBadge?: GuestBadgeItem | null;
   giveaway?: GiveawayState | null;
+  closingSlate?: ClosingSlateConfig | null;
   fadeToBlack?: boolean;
 }
 

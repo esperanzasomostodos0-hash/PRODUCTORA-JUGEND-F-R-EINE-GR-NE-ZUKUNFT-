@@ -3,9 +3,12 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
+  Calendar,
   CheckCircle2,
   Clapperboard,
+  Clock,
   Edit3,
+  Eye,
   Film,
   Home,
   LogOut,
@@ -47,16 +50,7 @@ interface ProductionHouseSiteProps {
 
 type SiteViewState =
   | { kind: 'home' }
-  | {
-      kind: 'apartado';
-      section:
-        | 'manifiesto'
-        | 'programas'
-        | 'servicios'
-        | 'alianzas'
-        | 'contacto'
-        | 'pedir-programa';
-    }
+  | { kind: 'live-hub' }
   | { kind: 'program-detail'; programId: string }
   | { kind: 'admin-panel' }
   | { kind: 'site-editor' };
@@ -65,6 +59,7 @@ type ProgramFilter = 'all' | 'airing' | 'development';
 
 const FALLBACK_CONTENT: SiteContentConfig = {
   brandName: 'JUGEND FÜR EINE GRÜNE ZUKUNFT',
+  ownerName: 'ALMADA EDUARDO THOMAS',
   foundingDateText: '20 de noviembre de 2026',
   locationText: 'Puerto Esperanza, Misiones',
   mottoText: 'Licht, Kamera, Action!',
@@ -88,7 +83,7 @@ const FALLBACK_CONTENT: SiteContentConfig = {
   manifestoTitle:
     'Una productora creada para que los programas jóvenes tengan altura televisiva',
   manifestoBody:
-    'El 20 de noviembre de 2026 formalizamos un proyecto que venía latiendo en el estudio: reunir dirección audiovisual, tecnología propia de transmisión en vivo y una agenda comprometida con el ambiente y la comunidad bajo una sola casa productora.',
+    'El 20 de noviembre de 2026 formalizamos un proyecto que venía tomando forma: reunir dirección audiovisual, tecnología propia de transmisión en vivo y una agenda comprometida con el ambiente y la comunidad bajo una sola casa productora.',
   manifestoImageUrl: '/src/assets/images/service_cinema_rig_1795376283166.jpg',
   manifestoPillars: [
     {
@@ -114,10 +109,10 @@ const FALLBACK_CONTENT: SiteContentConfig = {
   servicesEyebrow: '03. CAPACIDADES DE PRODUCCIÓN E INGENIERÍA PROPIA',
   servicesTitle: 'Del guion al aire en un ecosistema integrado',
   controlRoomImageUrl: '/src/assets/images/service_control_room_1795376283734.jpg',
-  controlRoomEyebrow: 'ESTUDIO INTEGRADO MESACONTROL TV',
-  controlRoomTitle: 'Operación en vivo con OBS y WebRTC HD',
+  controlRoomEyebrow: 'CONSOLA DIGITAL MESACONTROL TV',
+  controlRoomTitle: 'Operación en vivo',
   controlRoomBody:
-    'Nuestra productora cuenta con consola propia para manejar cámaras USB/IP, micrófonos en tiempo real, escaletas automáticas, cortinas sonoras de TV y placas gráficas sin retraso.',
+    'Nuestra productora opera con consola digital propia para manejar cámaras USB/IP, micrófonos en tiempo real, escaletas automáticas, cortinas sonoras de TV y placas gráficas sin retraso.',
   capabilities: [
     {
       index: '01',
@@ -165,7 +160,7 @@ const FALLBACK_CONTENT: SiteContentConfig = {
       index: '02',
       name: 'Producción de Programa Propio',
       detail:
-        'Ponemos estudio, cámaras, micrófonos, gráfica televisiva y plataforma de streaming para que tu organización, medio o equipo lance su propio ciclo semanal.',
+        'Ponemos cámaras, micrófonos, gráfica televisiva, dirección técnica y plataforma de streaming para que tu organización, medio o equipo lance su propio ciclo semanal.',
       actionLabel: 'Cotizar programa propio',
       topic: 'Producción de programa propio',
     },
@@ -181,7 +176,7 @@ const FALLBACK_CONTENT: SiteContentConfig = {
   contactEyebrow: '05. MESA DE PRODUCCIÓN Y CONTACTO',
   contactTitle: 'Pongamos tu próximo programa en marcha',
   contactBody:
-    'Escribinos para pautar en nuestros ciclos vigentes, producir un formato audiovisual nuevo o coordinar una reunión en estudio.',
+    'Escribinos para pautar en nuestros ciclos vigentes, producir un formato audiovisual nuevo o coordinar una reunión de producción.',
   whatsappDisplay: '+54 9 3757 30-0369',
   whatsappNumber: '5493757300369',
   contactEmail: 'produccion@jugendgruenezukunft.com',
@@ -254,7 +249,16 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
   const [filter, setFilter] = useState<ProgramFilter>('all');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [liveRooms, setLiveRooms] = useState<
-    Record<string, { isLive: boolean; audienceCount: number }>
+    Record<
+      string,
+      {
+        isLive: boolean;
+        audienceCount: number;
+        viewerCount?: number;
+        audienceMode?: 'real' | 'inflated';
+        previewFrame?: string | null;
+      }
+    >
   >({});
   const [editingProgram, setEditingProgram] = useState<ProducerProgram | null>(
     null
@@ -272,20 +276,12 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     ) {
       return { kind: 'home' };
     }
+    if (params.get('emisiones') === '1') {
+      return { kind: 'live-hub' };
+    }
     const prog = (params.get('programa') || '').trim();
     if (prog) {
       return { kind: 'program-detail', programId: prog };
-    }
-    const sec = (params.get('apartado') || '').trim();
-    if (
-      sec === 'manifiesto' ||
-      sec === 'programas' ||
-      sec === 'servicios' ||
-      sec === 'alianzas' ||
-      sec === 'contacto' ||
-      sec === 'pedir-programa'
-    ) {
-      return { kind: 'apartado', section: sec };
     }
     return { kind: 'home' };
   }, []);
@@ -301,10 +297,11 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     const url = new URL(window.location.href);
     url.searchParams.delete('programa');
     url.searchParams.delete('apartado');
+    url.searchParams.delete('emisiones');
     if (view.kind === 'program-detail') {
       url.searchParams.set('programa', view.programId);
-    } else if (view.kind === 'apartado') {
-      url.searchParams.set('apartado', view.section);
+    } else if (view.kind === 'live-hub') {
+      url.searchParams.set('emisiones', '1');
     }
     const nextUrl = `${url.pathname}${url.search}`;
     if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
@@ -345,6 +342,47 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
   const [reqError, setReqError] = useState<string | null>(null);
   const [reqReceipt, setReqReceipt] = useState<string | null>(null);
 
+  const refreshRooms = useCallback(() => {
+    fetch('/api/broadcast/rooms')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.ok && Array.isArray(data.rooms)) {
+          const map: Record<
+            string,
+            {
+              isLive: boolean;
+              audienceCount: number;
+              viewerCount?: number;
+              audienceMode?: 'real' | 'inflated';
+              previewFrame?: string | null;
+            }
+          > = {};
+          data.rooms.forEach(
+            (rm: {
+              programId: string;
+              isLive: boolean;
+              audienceCount: number;
+              viewerCount?: number;
+              audienceMode?: 'real' | 'inflated';
+              previewFrame?: string | null;
+            }) => {
+              map[rm.programId] = {
+                isLive: Boolean(rm.isLive),
+                audienceCount:
+                  typeof rm.audienceCount === 'number' ? rm.audienceCount : 0,
+                viewerCount:
+                  typeof rm.viewerCount === 'number' ? rm.viewerCount : 0,
+                audienceMode: rm.audienceMode,
+                previewFrame: rm.previewFrame || null,
+              };
+            }
+          );
+          setLiveRooms(map);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const loadSiteData = useCallback(() => {
     fetch('/api/producer/site')
       .then((r) => r.json())
@@ -360,30 +398,19 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
       })
       .catch(() => {});
 
-    fetch('/api/broadcast/rooms')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.ok && Array.isArray(data.rooms)) {
-          const map: Record<string, { isLive: boolean; audienceCount: number }> =
-            {};
-          data.rooms.forEach(
-            (rm: { programId: string; isLive: boolean; audienceCount: number }) => {
-              map[rm.programId] = {
-                isLive: Boolean(rm.isLive),
-                audienceCount:
-                  typeof rm.audienceCount === 'number' ? rm.audienceCount : 36,
-              };
-            }
-          );
-          setLiveRooms(map);
-        }
-      })
-      .catch(() => {});
-  }, []);
+    refreshRooms();
+  }, [refreshRooms]);
 
   useEffect(() => {
     loadSiteData();
   }, [loadSiteData]);
+
+  useEffect(() => {
+    if (currentView.kind !== 'live-hub') return;
+    refreshRooms();
+    const id = window.setInterval(refreshRooms, 2500);
+    return () => window.clearInterval(id);
+  }, [currentView.kind, refreshRooms]);
 
   const pushView = useCallback(
     (next: SiteViewState) => {
@@ -412,6 +439,29 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [syncBrowserUrl]);
 
+  const navigateToHomeSection = useCallback(
+    (sectionId: string) => {
+      setMobileMenuOpen(false);
+      if (currentView.kind !== 'home') {
+        const homeView: SiteViewState = { kind: 'home' };
+        setViewHistory([homeView]);
+        syncBrowserUrl(homeView);
+        window.requestAnimationFrame(() => {
+          window.setTimeout(() => {
+            document
+              .getElementById(sectionId)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 80);
+        });
+      } else {
+        document
+          .getElementById(sectionId)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    },
+    [currentView.kind, syncBrowserUrl]
+  );
+
   const handleLogout = () => {
     onLogout();
     setViewHistory([{ kind: 'home' }]);
@@ -420,7 +470,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
   const handleSelectPartnershipTopic = (topic: string) => {
     setProjectType(topic);
     setSubmittedTicket(null);
-    pushView({ kind: 'apartado', section: 'contacto' });
+    navigateToHomeSection('contacto');
   };
 
   const handleSubmitInquiry = async (e: React.FormEvent) => {
@@ -569,36 +619,21 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
 
   // Dedicated Apartado Return Bar Title
   const getApartadoTitle = (): string => {
+    if (currentView.kind === 'live-hub') {
+      return 'Emisiones en Vivo · Cartelera y Señales';
+    }
     if (currentView.kind === 'program-detail') {
       const p = programs.find((x) => x.id === currentView.programId);
       return p ? `Programa · ${p.title}` : 'Ficha de Programa';
     }
-    if (currentView.kind === 'apartado') {
-      const map: Record<typeof currentView.section, string> = {
-        manifiesto: 'Manifiesto Fundacional',
-        programas: 'Cartelera de Programas',
-        servicios: 'Servicios y Estudio',
-        alianzas: 'Alianzas y Auspicios',
-        contacto: 'Mesa de Producción y Contacto',
-        'pedir-programa': 'Solicitar Crear un Programa',
-      };
-      return map[currentView.section];
-    }
     return '';
   };
 
-  const primaryLiveProgramId =
-    programs.find((p) => p.statusKey === 'airing')?.id ||
-    programs[0]?.id ||
-    'sin-filtro';
-
-  // Shared Renderers for Sections (both on Home overview and focused Apartados)
-  const renderManifestoSection = (standalone = false) => (
+  // Shared Renderers for Home Sections
+  const renderManifestoSection = () => (
     <section
       id="manifiesto"
-      className={`max-w-[1280px] mx-auto px-4 sm:px-8 ${
-        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-28 border-b border-white/10'
-      }`}
+      className="max-w-[1280px] mx-auto px-4 sm:px-8 py-20 lg:py-28 border-b border-white/10"
     >
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-stretch">
         <div className="lg:col-span-5">
@@ -615,7 +650,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                 UNIDAD DE RODAJE · 4K / HD
               </span>
               <span className="text-slate-300 font-medium">
-                Estudio Puerto Esperanza
+                {siteContent.locationText || 'Puerto Esperanza, Misiones'}
               </span>
             </div>
           </div>
@@ -623,22 +658,9 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
 
         <div className="lg:col-span-7 flex flex-col justify-between space-y-8">
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs font-mono text-emerald-400 tracking-wider">
-                {siteContent.manifestoEyebrow}
-              </p>
-              {!standalone && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    pushView({ kind: 'apartado', section: 'manifiesto' })
-                  }
-                  className="text-xs font-medium text-slate-400 hover:text-white underline underline-offset-4 cursor-pointer"
-                >
-                  Abrir apartado
-                </button>
-              )}
-            </div>
+            <p className="text-xs font-mono text-emerald-400 tracking-wider">
+              {siteContent.manifestoEyebrow}
+            </p>
             <h2
               className="font-cinema text-2xl sm:text-4xl font-semibold text-white leading-tight"
               style={{ textWrap: 'balance' }}
@@ -647,6 +669,9 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
             </h2>
             <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
               {siteContent.manifestoBody}
+            </p>
+            <p className="text-xs font-mono text-emerald-300 tracking-wider">
+              Dueño y Creador: {siteContent.ownerName || 'ALMADA EDUARDO THOMAS'}
             </p>
           </div>
 
@@ -670,12 +695,10 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     </section>
   );
 
-  const renderProgramsSection = (standalone = false) => (
+  const renderProgramsSection = () => (
     <section
       id="programas"
-      className={`max-w-[1280px] mx-auto px-4 sm:px-8 ${
-        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-28 border-b border-white/10'
-      }`}
+      className="max-w-[1280px] mx-auto px-4 sm:px-8 py-20 lg:py-28 border-b border-white/10"
     >
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
         <div className="space-y-3 max-w-2xl">
@@ -723,9 +746,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
 
           <button
             type="button"
-            onClick={() =>
-              pushView({ kind: 'apartado', section: 'pedir-programa' })
-            }
+            onClick={() => navigateToHomeSection('pedir-programa')}
             className="min-h-[42px] px-4 py-2 border border-emerald-500/50 bg-emerald-950/40 hover:bg-emerald-600 text-emerald-200 hover:text-white text-xs font-semibold rounded-lg inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -744,36 +765,6 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
           )}
         </div>
       </div>
-
-      {/* Direct Directory Strip — Every program has its own dedicated Apartado */}
-      {programs.length > 0 && (
-        <div className="mb-8 p-3.5 sm:p-4 bg-[#080C0E] border border-white/10 rounded-xl flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs font-mono text-emerald-400 tracking-wider">
-            APARTADOS POR PROGRAMA ({programs.length})
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {programs.map((prog) => {
-              const room = liveRooms[prog.id];
-              return (
-                <button
-                  key={prog.id}
-                  type="button"
-                  onClick={() =>
-                    pushView({ kind: 'program-detail', programId: prog.id })
-                  }
-                  className="min-h-[34px] px-3 py-1.5 bg-[#0E1412] hover:bg-emerald-950/60 border border-white/12 hover:border-emerald-500/50 rounded-lg text-xs font-medium text-slate-200 hover:text-white inline-flex items-center gap-2 cursor-pointer transition-colors"
-                >
-                  {room?.isLive && (
-                    <span className="w-1.5 h-1.5 bg-red-500 shrink-0" />
-                  )}
-                  <span>{prog.title}</span>
-                  <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {filteredPrograms.map((program) => {
@@ -984,12 +975,10 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     </section>
   );
 
-  const renderServicesSection = (standalone = false) => (
+  const renderServicesSection = () => (
     <section
       id="servicios"
-      className={`max-w-[1280px] mx-auto px-4 sm:px-8 ${
-        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-28 border-b border-white/10'
-      }`}
+      className="max-w-[1280px] mx-auto px-4 sm:px-8 py-20 lg:py-28 border-b border-white/10"
     >
       <div className="flex flex-wrap items-end justify-between gap-4 mb-12">
         <div className="space-y-3 max-w-2xl">
@@ -1003,15 +992,6 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
             {siteContent.servicesTitle}
           </h2>
         </div>
-        {!standalone && (
-          <button
-            type="button"
-            onClick={() => pushView({ kind: 'apartado', section: 'servicios' })}
-            className="text-xs font-medium text-slate-400 hover:text-white underline underline-offset-4 cursor-pointer"
-          >
-            Abrir apartado
-          </button>
-        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
@@ -1019,8 +999,8 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
           <div className="relative aspect-[4/3] bg-black overflow-hidden">
             <ResilientImage
               src={siteContent.controlRoomImageUrl}
-              alt="Sala de control maestro MesaControl TV"
-              fallbackTitle="Control Maestro TV"
+              alt="Consola digital MesaControl TV"
+              fallbackTitle="Consola MesaControl TV"
               icon="tv"
               className="w-full h-full object-cover"
             />
@@ -1046,18 +1026,16 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                 className="min-h-[42px] px-5 py-2.5 bg-white text-black hover:bg-slate-200 text-xs sm:text-sm font-semibold rounded-lg inline-flex items-center justify-center gap-2 cursor-pointer transition-colors self-start whitespace-nowrap"
               >
                 <MonitorPlay className="w-4 h-4" />
-                <span>Abrir Consola del Estudio</span>
+                <span>Abrir MesaControl TV</span>
               </button>
             ) : (
               <button
                 type="button"
-                onClick={() =>
-                  pushView({ kind: 'apartado', section: 'pedir-programa' })
-                }
+                onClick={() => navigateToHomeSection('pedir-programa')}
                 className="min-h-[42px] px-5 py-2.5 border border-emerald-500/45 bg-emerald-950/40 hover:bg-emerald-600 text-emerald-200 hover:text-white text-xs sm:text-sm font-semibold rounded-lg inline-flex items-center justify-center gap-2 cursor-pointer transition-colors self-start whitespace-nowrap"
               >
                 <Clapperboard className="w-4 h-4" />
-                <span>Proponer un Programa en Estudio</span>
+                <span>Pedir Crear un Programa</span>
               </button>
             )}
           </div>
@@ -1099,12 +1077,10 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     </section>
   );
 
-  const renderAlliancesSection = (standalone = false) => (
+  const renderAlliancesSection = () => (
     <section
       id="alianzas"
-      className={`max-w-[1280px] mx-auto px-4 sm:px-8 ${
-        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-28 border-b border-white/10'
-      }`}
+      className="max-w-[1280px] mx-auto px-4 sm:px-8 py-20 lg:py-28 border-b border-white/10"
     >
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 mb-12 items-end">
         <div className="lg:col-span-7 space-y-3">
@@ -1118,17 +1094,8 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
             {siteContent.alliancesTitle}
           </h2>
         </div>
-        <div className="lg:col-span-5 text-sm text-slate-400 leading-relaxed space-y-2">
+        <div className="lg:col-span-5 text-sm text-slate-400 leading-relaxed">
           <p>{siteContent.alliancesSubtitle}</p>
-          {!standalone && (
-            <button
-              type="button"
-              onClick={() => pushView({ kind: 'apartado', section: 'alianzas' })}
-              className="text-xs font-medium text-emerald-400 hover:text-emerald-300 underline underline-offset-4 cursor-pointer"
-            >
-              Ver apartado completo
-            </button>
-          )}
         </div>
       </div>
 
@@ -1164,12 +1131,10 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     </section>
   );
 
-  const renderContactSection = (standalone = false) => (
+  const renderContactSection = () => (
     <section
       id="contacto"
-      className={`max-w-[1280px] mx-auto px-4 sm:px-8 ${
-        standalone ? 'py-12 lg:py-16' : 'py-20 lg:py-28'
-      }`}
+      className="max-w-[1280px] mx-auto px-4 sm:px-8 py-20 lg:py-28"
     >
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-start">
         <div className="lg:col-span-5 space-y-6">
@@ -1193,6 +1158,12 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               <div className="text-xs text-slate-400">Casa productora</div>
               <div className="text-white font-medium">
                 {siteContent.brandName}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-slate-400">Dueño y Creador</div>
+              <div className="text-emerald-300 font-semibold">
+                {siteContent.ownerName || 'ALMADA EDUARDO THOMAS'}
               </div>
             </div>
             <div>
@@ -1367,9 +1338,10 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                 )}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-emerald-400 hover:text-emerald-300 underline underline-offset-4 whitespace-nowrap font-mono"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/35 border border-emerald-500/40 rounded-lg text-xs font-semibold text-emerald-300 hover:text-white whitespace-nowrap transition-colors"
               >
-                WhatsApp {siteContent.whatsappDisplay || WHATSAPP_DISPLAY}
+                <MessageCircle className="w-4 h-4" />
+                <span>WhatsApp</span>
               </a>
             </div>
           </form>
@@ -1378,15 +1350,18 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     </section>
   );
 
-  const renderRequestProgramApartado = () => (
-    <section className="max-w-[960px] mx-auto px-4 sm:px-8 py-12 lg:py-16 space-y-8">
-      <div className="space-y-3">
+  const renderRequestProgramSection = () => (
+    <section
+      id="pedir-programa"
+      className="max-w-[1280px] mx-auto px-4 sm:px-8 py-20 lg:py-24 border-b border-white/10 space-y-8"
+    >
+      <div className="max-w-3xl space-y-3">
         <p className="text-xs font-mono text-emerald-400 tracking-wider">
           CONVOCATORIA ABIERTA DE FORMATOS ORIGINALES
         </p>
-        <h1 className="font-cinema text-2xl sm:text-4xl font-semibold text-white">
+        <h2 className="font-cinema text-2xl sm:text-4xl font-semibold text-white">
           Solicitar Crear un Programa en la Productora
-        </h1>
+        </h2>
         <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
           ¿Tenés una idea de programa de TV, radio visual, streaming, podcast o ciclo documental? Presentanos tu propuesta. El equipo de dirección de <strong>{siteContent.brandName}</strong> revisará el proyecto para sumarlo a la programación oficial.
         </p>
@@ -1559,13 +1534,18 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
             </span>
           </button>
 
-          <button
-            type="button"
-            onClick={goBack}
-            className="text-xs text-slate-400 hover:text-white underline underline-offset-4 cursor-pointer"
+          <a
+            href={getProducerWhatsAppUrl(
+              'Propuesta de Nuevo Programa',
+              siteContent.whatsappNumber
+            )}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="min-h-[44px] px-4 py-2 border border-emerald-500/40 bg-emerald-950/35 hover:bg-emerald-900/50 text-emerald-200 text-xs font-semibold rounded-lg inline-flex items-center gap-2"
           >
-            Cancelar y volver atrás
-          </button>
+            <MessageCircle className="w-4 h-4" />
+            <span>WhatsApp</span>
+          </a>
         </div>
       </form>
     </section>
@@ -1596,34 +1576,6 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
 
     return (
       <section className="max-w-[1200px] mx-auto px-4 sm:px-8 py-10 lg:py-14 space-y-8">
-        {/* Program Apartado Switcher Strip */}
-        {programs.length > 1 && (
-          <div className="p-3 bg-[#090D0F] border border-white/10 rounded-xl flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-mono text-emerald-400 pr-2">
-              APARTADOS DE PROGRAMAS:
-            </span>
-            {programs.map((item) => {
-              const active = item.id === program.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() =>
-                    pushView({ kind: 'program-detail', programId: item.id })
-                  }
-                  className={`min-h-[34px] px-3 py-1 rounded-lg font-medium cursor-pointer transition-colors ${
-                    active
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white'
-                  }`}
-                >
-                  {item.title}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
         {/* Program Hero Showcase */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
           <div className="lg:col-span-6 rounded-2xl overflow-hidden border border-white/12 bg-black min-h-[300px] relative shadow-2xl">
@@ -1751,7 +1703,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                 className="min-h-[42px] px-4 py-2 border border-emerald-500/45 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-200 text-sm font-medium rounded-lg inline-flex items-center gap-2"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>WhatsApp {waDisplay}</span>
+                <span>WhatsApp</span>
               </a>
             </div>
           </div>
@@ -1769,7 +1721,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                 Auspiciá en {program.title}
               </h2>
               <p className="text-xs sm:text-sm text-slate-300">
-                Solicitá tu banner en pantalla o mención en vivo comunicándote directo al {waDisplay}.
+                Solicitá tu banner en pantalla o mención en vivo comunicándote directo por WhatsApp al {waDisplay}.
               </p>
             </div>
             <button
@@ -1797,7 +1749,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                     BANNER {slotNum} · {program.title}
                   </div>
                   <div className="text-xs text-slate-300 mt-1">
-                    Pedir espacio por WhatsApp ({waDisplay})
+                    Pedir espacio por WhatsApp
                   </div>
                 </div>
                 <ArrowUpRight className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -1836,6 +1788,178 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
     );
   };
 
+  const renderLiveHub = () => (
+    <section className="max-w-[1280px] mx-auto px-4 sm:px-8 py-10 lg:py-14 space-y-8">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-6">
+        <div className="space-y-2.5 max-w-2xl">
+          <div className="inline-flex items-center gap-2 text-xs font-mono text-emerald-400 tracking-wider">
+            <Radio className="w-4 h-4" />
+            <span>EMISIONES EN VIVO · {siteContent.brandName}</span>
+          </div>
+          <h1 className="font-cinema text-2xl sm:text-4xl font-semibold text-white">
+            Señales en Directo y Horarios de Transmisión
+          </h1>
+          <p className="text-sm text-slate-300 leading-relaxed">
+            Si un programa está transmitiendo en este momento vas a ver su emisión en vivo; cuando esté fuera del aire te mostramos su logo oficial y sus días y horarios de transmisión.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={refreshRooms}
+          className="min-h-[40px] px-4 py-2 border border-white/15 hover:border-emerald-500/45 bg-white/5 hover:bg-emerald-950/35 text-xs font-semibold text-slate-200 hover:text-white rounded-lg cursor-pointer self-start md:self-auto"
+        >
+          Actualizar Señales
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {programs.map((program) => {
+          const room = liveRooms[program.id];
+          const isLive = Boolean(room?.isLive);
+
+          return (
+            <article
+              key={program.id}
+              className={`rounded-2xl overflow-hidden border flex flex-col justify-between transition-colors shadow-xl ${
+                isLive
+                  ? 'bg-[#09120D] border-emerald-500/60'
+                  : 'bg-[#090D0F] border-white/12 hover:border-white/25'
+              }`}
+            >
+              {/* Top Stage: Live Broadcast Feed if transmitting, Program Logo + Schedule if offline */}
+              <div
+                className="relative aspect-video w-full overflow-hidden border-b border-white/10 flex flex-col items-center justify-center p-6 text-center"
+                style={{
+                  background: isLive
+                    ? '#000000'
+                    : 'radial-gradient(circle at 50% 40%, rgba(16,185,129,0.16) 0%, #050807 76%)',
+                }}
+              >
+                {isLive ? (
+                  <>
+                    {room?.previewFrame ? (
+                      <img
+                        src={room.previewFrame}
+                        alt={`Transmisión en vivo de ${program.title}`}
+                        className="absolute inset-0 w-full h-full object-contain bg-black"
+                      />
+                    ) : (
+                      <ResilientImage
+                        src={program.imageUrl || siteContent.heroImageUrl}
+                        alt={program.title}
+                        fallbackTitle={program.title}
+                        icon="tv"
+                        className="absolute inset-0 w-full h-full object-cover opacity-80"
+                      />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/35 pointer-events-none" />
+                    <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-600 text-white text-[11px] font-mono font-bold rounded shadow">
+                        <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                        <span>EN VIVO</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-black/80 border border-white/15 text-emerald-300 text-[11px] font-mono font-semibold rounded tabular-nums">
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>
+                          {(room?.audienceCount ?? 0).toLocaleString('es-AR')} viendo
+                        </span>
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
+                      <span className="px-2.5 py-1 bg-white/8 border border-white/15 text-slate-300 text-[11px] font-mono font-semibold rounded">
+                        FUERA DEL AIRE
+                      </span>
+                      <span className="px-2.5 py-1 bg-black/60 border border-white/10 text-emerald-300 text-[11px] font-mono rounded">
+                        {program.channelOrSignal || 'Señal HD'}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col items-center justify-center gap-3 max-w-sm mt-4">
+                      {program.logoUrl ? (
+                        <img
+                          src={program.logoUrl}
+                          alt={`Logo ${program.title}`}
+                          referrerPolicy="no-referrer"
+                          className="h-24 sm:h-28 w-auto object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.85)]"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-2xl bg-emerald-950/80 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                          <Tv className="w-8 h-8" />
+                        </div>
+                      )}
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 border border-emerald-500/30 text-xs font-mono text-emerald-300">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>{program.schedule}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Card Details & Actions */}
+              <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+                <div className="space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                    <span className="font-mono text-emerald-400 font-semibold">
+                      {program.format}
+                    </span>
+                    <span className="inline-flex items-center gap-1 font-mono text-slate-400">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{program.duration}</span>
+                    </span>
+                  </div>
+
+                  <h2 className="font-cinema text-2xl font-semibold text-white">
+                    {program.title}
+                  </h2>
+
+                  <p className="text-xs font-mono text-emerald-300">
+                    Horario de transmisión: {program.schedule}
+                  </p>
+
+                  <p className="text-sm text-slate-300 leading-relaxed line-clamp-2">
+                    {program.summary}
+                  </p>
+                </div>
+
+                <div className="pt-3 border-t border-white/10 flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => onOpenLive(program.id)}
+                    className={`min-h-[42px] px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg inline-flex items-center gap-2 cursor-pointer transition-colors ${
+                      isLive
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    }`}
+                  >
+                    <Radio className="w-4 h-4" />
+                    <span>
+                      {isLive ? 'Ver Transmisión en Vivo' : 'Entrar a la Señal'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      pushView({ kind: 'program-detail', programId: program.id })
+                    }
+                    className="min-h-[42px] px-4 py-2 border border-white/15 hover:border-white/30 text-slate-200 hover:text-white text-xs sm:text-sm font-medium rounded-lg cursor-pointer transition-colors"
+                  >
+                    Ver Apartado y Videos
+                  </button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+
   return (
     <div className="min-h-screen bg-[#050708] text-slate-100 flex flex-col">
       {/* TOP BAR CONTRACT: Strictly 3 zones separated by gap-8 */}
@@ -1850,7 +1974,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
             {siteContent.brandName}
           </button>
 
-          {/* Zone 2: 5 concise single-line nav links (enter focused Apartados cleanly) */}
+          {/* Zone 2: Smooth navigation links on Home */}
           <nav
             aria-label="Navegación principal"
             className="hidden lg:flex items-center gap-7 text-sm text-slate-300"
@@ -1867,15 +1991,8 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               <button
                 key={navItem.id}
                 type="button"
-                onClick={() =>
-                  pushView({ kind: 'apartado', section: navItem.id })
-                }
-                className={`py-1 hover:text-white underline-offset-8 decoration-emerald-500 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  currentView.kind === 'apartado' &&
-                  currentView.section === navItem.id
-                    ? 'text-white underline'
-                    : 'hover:underline'
-                }`}
+                onClick={() => navigateToHomeSection(navItem.id)}
+                className="py-1 hover:text-white underline-offset-8 decoration-emerald-500 hover:underline transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {navItem.label}
               </button>
@@ -1933,16 +2050,16 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               [
                 { id: 'manifiesto', label: 'Manifiesto' },
                 { id: 'programas', label: 'Programas' },
+                { id: 'pedir-programa', label: 'Pedir Programa' },
                 { id: 'servicios', label: 'Servicios' },
                 { id: 'alianzas', label: 'Alianzas' },
                 { id: 'contacto', label: 'Contacto' },
-                { id: 'pedir-programa', label: 'Pedir Programa' },
               ] as const
             ).map((item) => (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => pushView({ kind: 'apartado', section: item.id })}
+                onClick={() => navigateToHomeSection(item.id)}
                 className="py-1.5 hover:text-white whitespace-nowrap cursor-pointer"
               >
                 {item.label}
@@ -1995,7 +2112,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                   className="min-h-[34px] px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-md inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                 >
                   <MonitorPlay className="w-3.5 h-3.5" />
-                  <span>Estudio en Vivo</span>
+                  <span>MesaControl TV</span>
                 </button>
               )}
               <button
@@ -2052,8 +2169,8 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               <div className="absolute inset-0 pointer-events-none">
                 <ResilientImage
                   src={siteContent.heroImageUrl}
-                  alt="Set audiovisual de Jugend für eine grüne Zukunft"
-                  fallbackTitle="Estudio Principal"
+                  alt="Producción audiovisual de Jugend für eine grüne Zukunft"
+                  fallbackTitle="JUGEND FÜR EINE GRÜNE ZUKUNFT"
                   className="w-full h-full object-cover opacity-35"
                 />
                 <div className="absolute inset-0 bg-gradient-to-b from-[#050708]/88 via-[#050708]/72 to-[#050708]" />
@@ -2104,9 +2221,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                     <div className="flex flex-wrap items-center gap-4 pt-2">
                       <button
                         type="button"
-                        onClick={() =>
-                          pushView({ kind: 'apartado', section: 'programas' })
-                        }
+                        onClick={() => navigateToHomeSection('programas')}
                         className="min-h-[46px] px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg shadow-lg shadow-emerald-950/60 transition-colors inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         <span>{siteContent.heroPrimaryCta}</span>
@@ -2115,12 +2230,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
 
                       <button
                         type="button"
-                        onClick={() =>
-                          pushView({
-                            kind: 'apartado',
-                            section: 'pedir-programa',
-                          })
-                        }
+                        onClick={() => navigateToHomeSection('pedir-programa')}
                         className="min-h-[46px] px-5 py-2.5 border border-white/20 hover:border-emerald-500/60 bg-white/[0.03] text-slate-100 hover:text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         <Plus className="w-4 h-4 text-emerald-400" />
@@ -2129,7 +2239,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => onOpenLive(primaryLiveProgramId)}
+                        onClick={() => pushView({ kind: 'live-hub' })}
                         className="min-h-[46px] px-3 py-2 text-sm font-medium text-slate-200 hover:text-white underline underline-offset-8 decoration-white/30 hover:decoration-emerald-500 transition-colors inline-flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
                       >
                         <Radio className="w-4 h-4 text-emerald-400" />
@@ -2163,10 +2273,10 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                         />
                       </div>
 
-                      <div className="w-full pt-3.5 border-t border-white/10 flex items-center justify-between gap-4 text-xs text-slate-300">
+                      <div className="w-full pt-3.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
                         <span>{siteContent.emblemTagline}</span>
                         <span className="font-mono text-emerald-400 tabular-nums">
-                          {siteContent.emblemCategory}
+                          {siteContent.ownerName || 'ALMADA EDUARDO THOMAS'}
                         </span>
                       </div>
                     </div>
@@ -2196,37 +2306,16 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               </div>
             </section>
 
-            {renderManifestoSection(false)}
-            {renderProgramsSection(false)}
-            {renderServicesSection(false)}
-            {renderAlliancesSection(false)}
-            {renderContactSection(false)}
+            {renderManifestoSection()}
+            {renderProgramsSection()}
+            {renderRequestProgramSection()}
+            {renderServicesSection()}
+            {renderAlliancesSection()}
+            {renderContactSection()}
           </>
         )}
 
-        {currentView.kind === 'apartado' &&
-          currentView.section === 'manifiesto' &&
-          renderManifestoSection(true)}
-
-        {currentView.kind === 'apartado' &&
-          currentView.section === 'programas' &&
-          renderProgramsSection(true)}
-
-        {currentView.kind === 'apartado' &&
-          currentView.section === 'servicios' &&
-          renderServicesSection(true)}
-
-        {currentView.kind === 'apartado' &&
-          currentView.section === 'alianzas' &&
-          renderAlliancesSection(true)}
-
-        {currentView.kind === 'apartado' &&
-          currentView.section === 'contacto' &&
-          renderContactSection(true)}
-
-        {currentView.kind === 'apartado' &&
-          currentView.section === 'pedir-programa' &&
-          renderRequestProgramApartado()}
+        {currentView.kind === 'live-hub' && renderLiveHub()}
 
         {currentView.kind === 'program-detail' &&
           renderProgramDetail(currentView.programId)}
@@ -2240,6 +2329,9 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
               {siteContent.brandName}
             </div>
             <p className="text-xs text-slate-400">{siteContent.footerSubline}</p>
+            <p className="text-xs font-mono text-emerald-400">
+              Dueño y Creador: {siteContent.ownerName || 'ALMADA EDUARDO THOMAS'}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-6 text-xs text-slate-400">
@@ -2252,16 +2344,14 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
             </button>
             <button
               type="button"
-              onClick={() =>
-                pushView({ kind: 'apartado', section: 'pedir-programa' })
-              }
+              onClick={() => navigateToHomeSection('pedir-programa')}
               className="hover:text-white transition-colors cursor-pointer"
             >
               Pedir Programa
             </button>
             <button
               type="button"
-              onClick={() => onOpenLive(primaryLiveProgramId)}
+              onClick={() => pushView({ kind: 'live-hub' })}
               className="hover:text-white transition-colors cursor-pointer"
             >
               Emisiones en Vivo
@@ -2272,7 +2362,7 @@ export const ProductionHouseSite: React.FC<ProductionHouseSiteProps> = ({
                 onClick={() => onOpenStudio()}
                 className="hover:text-emerald-400 text-emerald-300 font-medium transition-colors cursor-pointer"
               >
-                Estudio en Vivo
+                MesaControl TV
               </button>
             )}
           </div>

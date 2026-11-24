@@ -69,6 +69,7 @@ interface ProducerDatabase {
 
 export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
   brandName: 'JUGEND FÜR EINE GRÜNE ZUKUNFT',
+  ownerName: 'ALMADA EDUARDO THOMAS',
   foundingDateText: '20 de noviembre de 2026',
   locationText: 'Puerto Esperanza, Misiones',
   mottoText: 'Licht, Kamera, Action!',
@@ -77,14 +78,14 @@ export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
   heroHeadline:
     'Productora audiovisual de programas con identidad propia y dirección en vivo',
   heroDescription:
-    'JUGEND FÜR EINE GRÜNE ZUKUNFT nace el 20 de noviembre de 2026 para concebir, dirigir y emitir formatos propios de televisión, radio visual y documentales con estética cinematográfica y tecnología de transmisión directa en alta definición.',
+    'JUGEND FÜR EINE GRÜNE ZUKUNFT nace el 20 de noviembre de 2026, creada por ALMADA EDUARDO THOMAS, para concebir, dirigir y emitir formatos propios de televisión digital, radio visual y documentales con estética cinematográfica y operación en directo en alta definición.',
   heroPrimaryCta: 'Explorar Programas',
   heroSecondaryCta: 'Ver Emisiones en Vivo',
   emblemTagline: 'Juventud por un Futuro Verde',
   emblemCategory: 'CASA PRODUCTORA',
   dossierMetrics: [
+    { label: 'Dueño y Creador', value: 'ALMADA EDUARDO THOMAS' },
     { label: 'Fecha de nacimiento', value: '20/11/2026' },
-    { label: 'Formación audiovisual', value: 'TV, Radio Visual y Cine' },
     { label: 'Ingeniería de emisión', value: '1280×720 HD · 30 FPS' },
     { label: 'Frecuencia aliada', value: 'Radioactiva 88.5 FM', accent: true },
   ],
@@ -92,18 +93,18 @@ export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
   manifestoTitle:
     'Una productora creada para que los programas jóvenes tengan altura televisiva',
   manifestoBody:
-    'El 20 de noviembre de 2026 formalizamos un proyecto que venía latiendo en el estudio: reunir dirección audiovisual, tecnología propia de transmisión en vivo y una agenda comprometida con el ambiente y la comunidad bajo una sola casa productora.',
+    'El 20 de noviembre de 2026, bajo la dirección y creación de ALMADA EDUARDO THOMAS, formalizamos una casa productora digital y multiplataforma: reunir dirección audiovisual, mesa de control en vivo y una agenda comprometida con el ambiente y la comunidad sin depender de infraestructura física fija.',
   manifestoImageUrl: '/src/assets/images/service_cinema_rig_1795376283166.jpg',
   manifestoPillars: [
     {
       title: '01. Estética y rigor',
       description:
-        'Cada emisión se piensa como una pieza de pantalla grande: encuadres cuidados, micrófonos dedicados, iluminación escénica y gráfica televisiva limpia.',
+        'Cada emisión se piensa como una pieza de pantalla grande: encuadres cuidados, audio limpio, iluminación cuidada y gráfica televisiva profesional.',
     },
     {
       title: '02. Tecnología propia',
       description:
-        'No dependemos de terceros para salir al aire: desarrollamos nuestra mesa de control integrada con OBS Studio, WebRTC HD y participación interactiva.',
+        'No dependemos de terceros para salir al aire: desarrollamos nuestra consola digital MesaControl TV integrada con OBS, WebRTC HD y participación interactiva.',
     },
     {
       title: '03. Futuro verde con voz',
@@ -114,27 +115,27 @@ export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
   programsEyebrow: '02. CARTELERA Y FORMATOS ORIGINALES',
   programsTitle: 'Programas en el aire y nuevos ciclos de la productora',
   programsSubtitle:
-    'Nuestra casa productora produce ciclos propios de televisión, radio visual y documentales, y recibe propuestas para crear nuevos programas originales.',
+    'Nuestra casa productora produce ciclos propios de televisión digital, radio visual y documentales, y recibe propuestas para crear nuevos programas originales.',
   servicesEyebrow: '03. CAPACIDADES DE PRODUCCIÓN E INGENIERÍA PROPIA',
   servicesTitle: 'Del guion al aire en un ecosistema integrado',
   controlRoomImageUrl: '/src/assets/images/service_control_room_1795376283734.jpg',
-  controlRoomEyebrow: 'ESTUDIO INTEGRADO MESACONTROL TV',
-  controlRoomTitle: 'Operación en vivo con OBS y WebRTC HD',
+  controlRoomEyebrow: 'CONSOLA INTEGRADA MESACONTROL TV',
+  controlRoomTitle: 'Operación en vivo',
   controlRoomBody:
-    'Nuestra productora cuenta con consola propia para manejar cámaras USB/IP, micrófonos en tiempo real, escaletas automáticas, cortinas sonoras de TV y placas gráficas sin retraso.',
+    'Nuestra productora cuenta con consola digital propia para operar cámaras, micrófonos en tiempo real, escaletas automáticas, cortinas sonoras de TV y placas gráficas sin necesidad de contar con un estudio físico propio.',
   capabilities: [
     {
       index: '01',
       title: 'Creación y Dirección de Programas',
       description:
-        'Diseñamos la estructura editorial, escaleta minuto a minuto, puesta de luces y dirección artística de programas semanales de TV, radio visual y streaming.',
+        'Diseñamos la estructura editorial, escaleta minuto a minuto y dirección artística de programas semanales de TV digital, radio visual y streaming.',
       deliverable: 'Biblia de formato, escaleta y operación completa',
     },
     {
       index: '02',
-      title: 'Realización Multicámara y Sincronización OBS',
+      title: 'Realización Multicámara y Sincronización Digital',
       description:
-        'Operamos con consola propia MesaControl TV sincronizada con OBS Studio: conmutación automática, escenas PIP, deck táctil e integración directa de cámaras y audio.',
+        'Operamos con consola propia MesaControl TV sincronizada con OBS: conmutación automática, escenas PIP, deck táctil e integración directa de cámaras y audio.',
       deliverable: 'Señal 1280×720 HD a 30 FPS con latencia mínima',
     },
     {
@@ -152,10 +153,10 @@ export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
       deliverable: 'Pieza master 16:9 + adaptaciones verticales',
     },
   ],
-  alliancesEyebrow: '04. ALIANZAS COMERCIALES Y COPRODUCCIONES',
+  alliancesEyebrow: '04. ALIANAS COMERCIALES Y COPRODUCCIONES',
   alliancesTitle: 'Espacio real para marcas, comercios e instituciones',
   alliancesSubtitle:
-    'Cada programa emitido por JUGEND FÜR EINE GRÜNE ZUKUNFT conecta anunciantes locales directamente con la audiencia mediante banners en pantalla, menciones en vivo y botones inmediatos de WhatsApp.',
+    'Cada programa emitido por JUGEND FÜR EINE GRÜNE ZUKUNFT conecta anunciantes locales directamente con la audiencia mediante banners en pantalla, menciones en vivo y acceso inmediato por WhatsApp.',
   partnershipModels: [
     {
       index: '01',
@@ -169,7 +170,7 @@ export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
       index: '02',
       name: 'Producción de Programa Propio',
       detail:
-        'Ponemos estudio, cámaras, micrófonos, gráfica televisiva y plataforma de streaming para que tu organización, medio o equipo lance su propio ciclo semanal.',
+        'Ponemos dirección digital, consola MesaControl TV, gráfica televisiva y plataforma de streaming multiplataforma para que tu organización o equipo lance su propio ciclo semanal.',
       actionLabel: 'Cotizar programa propio',
       topic: 'Producción de programa propio',
     },
@@ -185,12 +186,12 @@ export const DEFAULT_SITE_CONTENT: SiteContentConfig = {
   contactEyebrow: '05. MESA DE PRODUCCIÓN Y CONTACTO',
   contactTitle: 'Pongamos tu próximo programa en marcha',
   contactBody:
-    'Escribinos para pautar en nuestros ciclos vigentes, producir un formato audiovisual nuevo o coordinar una reunión en estudio.',
+    'Escribinos para pautar en nuestros ciclos vigentes, producir un formato audiovisual nuevo o coordinar una reunión de producción con nuestro equipo.',
   whatsappDisplay: '+54 9 3757 30-0369',
   whatsappNumber: '5493757300369',
   contactEmail: 'produccion@jugendgruenezukunft.com',
   footerSubline:
-    'Licht, Kamera, Action! · Fundada el 20/11/2026 · Puerto Esperanza, Misiones',
+    'Licht, Kamera, Action! · Fundada el 20/11/2026 · Puerto Esperanza, Misiones · Dueño y Creador: ALMADA EDUARDO THOMAS',
 };
 
 export const DEFAULT_PROGRAMS: ProducerProgram[] = [
@@ -203,19 +204,19 @@ export const DEFAULT_PROGRAMS: ProducerProgram[] = [
     schedule: 'Sábados 17:00 a 19:00 · Radioactiva 88.5 FM',
     duration: '120 min · Semanal',
     summary:
-      'Programa semanal de debate actual, agenda de Puerto Esperanza, invitados en estudio, música y trivias con premios en vivo.',
+      'Programa semanal de debate actual, agenda de Puerto Esperanza, invitados en vivo, música y trivias con premios en directo.',
     fullSynopsis:
-      '#SinFiltro combina radio FM tradicional con realización televisiva multicámara en 1280×720 HD. Cada sábado reúne a jóvenes, referentes comunitarios y emprendedores locales con participación directa de la audiencia mediante comentarios en vivo, mensajes de WhatsApp y sorteos instantáneos en pantalla.',
+      '#SinFiltro combina radio FM tradicional en Radioactiva 88.5 con realización televisiva multicámara en 1280×720 HD. Cada sábado reúne a jóvenes, referentes comunitarios y emprendedores locales con participación directa de la audiencia mediante comentarios en vivo, WhatsApp y sorteos instantáneos en pantalla.',
     technicalSpecs: [
       'Realización a 3 cámaras con conmutación en tiempo real',
       'Zócalos, titulares televisivos y placas de invitados en vivo',
-      'Emisión simultánea en Radioactiva 88.5 y señal web WebRTC HD',
+      'Emisión simultánea en Radioactiva 88.5 y señal web HD',
       'Espacios publicitarios integrados con enlace directo comercial',
     ],
     imageUrl: '/src/assets/images/program_sinfiltro_desk_1795376283057.jpg',
     logoUrl: '/assets/aistudio/sin-filtro-logoo2_2e0a15d3.png',
     featured: true,
-    hostTeam: 'Mesa de Conducción JZ',
+    hostTeam: 'Mesa de Conducción JZ · Dir. ALMADA EDUARDO THOMAS',
     channelOrSignal: 'Radioactiva 88.5 FM + Web HD',
     createdAt: 1795132800000,
   },
@@ -247,20 +248,20 @@ export const DEFAULT_PROGRAMS: ProducerProgram[] = [
     statusKey: 'development',
     statusLabel: 'En desarrollo · 2027',
     format: 'Ciclo Musical y Entrevistas',
-    schedule: 'Edición mensual · Grabado en Estudio A',
+    schedule: 'Edición mensual · Locaciones y espacios culturales',
     duration: '45 min por entrega',
     summary:
-      'Bandas, solistas y artistas emergentes interpretando sets acústicos en nuestro estudio con iluminación teatral y entrevista íntima.',
+      'Bandas, solistas y artistas emergentes interpretando sets acústicos en locaciones especiales con entrevista íntima.',
     fullSynopsis:
-      'Un formato pensado para darle visibilidad audiovisual de primer nivel a músicos regionales. Grabado en vivo a múltiples pistas de audio y cuatro ángulos de cámara con estética oscura y acentos esmeralda.',
+      'Un formato pensado para darle visibilidad audiovisual de primer nivel a músicos regionales. Grabado en vivo en locaciones culturales y emisiones especiales con múltiples pistas de audio y estética esmeralda.',
     technicalSpecs: [
       'Captura multipista de micrófonos e instrumentos',
-      'Iluminación escénica controlada por escenas',
+      'Iluminación escénica portátil controlada por escenas',
       'Masterización estéreo para streaming y radio',
     ],
     imageUrl: '/src/assets/images/studio_podcast_desk_1795296509941.jpg',
     hostTeam: 'Producción Musical JZ',
-    channelOrSignal: 'Estudio A + Radioactiva 88.5',
+    channelOrSignal: 'Radioactiva 88.5 FM + Web HD',
     createdAt: 1795132802000,
   },
   {
@@ -287,6 +288,93 @@ export const DEFAULT_PROGRAMS: ProducerProgram[] = [
   },
 ];
 
+function migrateLegacySiteContent(
+  parsedSite?: Partial<SiteContentConfig>
+): SiteContentConfig {
+  const merged: SiteContentConfig = {
+    ...DEFAULT_SITE_CONTENT,
+    ...(parsedSite || {}),
+  };
+
+  if (!merged.ownerName || !merged.ownerName.trim()) {
+    merged.ownerName = DEFAULT_SITE_CONTENT.ownerName;
+  }
+
+  if (
+    merged.controlRoomTitle === 'Operación en vivo con OBS y WebRTC HD' ||
+    merged.controlRoomTitle?.toLowerCase().includes('obs y webrtc')
+  ) {
+    merged.controlRoomTitle = 'Operación en vivo';
+  }
+
+  if (merged.controlRoomEyebrow === 'ESTUDIO INTEGRADO MESACONTROL TV') {
+    merged.controlRoomEyebrow = DEFAULT_SITE_CONTENT.controlRoomEyebrow;
+  }
+
+  if (merged.controlRoomBody?.includes('cámaras USB/IP')) {
+    merged.controlRoomBody = DEFAULT_SITE_CONTENT.controlRoomBody;
+  }
+
+  if (merged.manifestoBody?.includes('en el estudio')) {
+    merged.manifestoBody = DEFAULT_SITE_CONTENT.manifestoBody;
+  }
+
+  if (merged.heroDescription?.includes('televisión, radio visual') && !merged.heroDescription.includes('ALMADA EDUARDO THOMAS')) {
+    merged.heroDescription = DEFAULT_SITE_CONTENT.heroDescription;
+  }
+
+  if (merged.contactBody?.includes('reunión en estudio')) {
+    merged.contactBody = DEFAULT_SITE_CONTENT.contactBody;
+  }
+
+  if (merged.footerSubline && !merged.footerSubline.includes('ALMADA EDUARDO THOMAS')) {
+    merged.footerSubline = DEFAULT_SITE_CONTENT.footerSubline;
+  }
+
+  if (
+    Array.isArray(merged.dossierMetrics) &&
+    !merged.dossierMetrics.some((m) =>
+      String(m.value || '').toUpperCase().includes('ALMADA EDUARDO THOMAS')
+    )
+  ) {
+    merged.dossierMetrics = DEFAULT_SITE_CONTENT.dossierMetrics.map((m) => ({ ...m }));
+  }
+
+  if (Array.isArray(merged.partnershipModels)) {
+    merged.partnershipModels = merged.partnershipModels.map((pm) =>
+      pm.detail?.includes('Ponemos estudio')
+        ? { ...pm, detail: DEFAULT_SITE_CONTENT.partnershipModels[1].detail }
+        : pm
+    );
+  }
+
+  return merged;
+}
+
+function migrateLegacyPrograms(list: ProducerProgram[]): ProducerProgram[] {
+  return list.map((p) => {
+    if (p.id === 'sin-filtro') {
+      return {
+        ...p,
+        summary: p.summary.replace(/invitados en estudio/gi, 'invitados en vivo'),
+        hostTeam:
+          p.hostTeam && p.hostTeam.includes('ALMADA EDUARDO THOMAS')
+            ? p.hostTeam
+            : 'Mesa de Conducción JZ · Dir. ALMADA EDUARDO THOMAS',
+      };
+    }
+    if (p.id === 'sesiones-verdes') {
+      return {
+        ...p,
+        schedule: p.schedule.replace(/Grabado en Estudio A/gi, 'Locaciones y espacios culturales'),
+        summary: p.summary.replace(/en nuestro estudio/gi, 'en locaciones especiales'),
+        channelOrSignal: p.channelOrSignal?.replace(/Estudio A \+ /gi, '') || 'Radioactiva 88.5 FM + Web HD',
+      };
+    }
+    return p;
+  });
+}
+
 function parseDatabaseFile(filePath: string): ProducerDatabase | null {
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -295,13 +383,10 @@ function parseDatabaseFile(filePath: string): ProducerDatabase | null {
     return {
       adminAccount: parsed.adminAccount || null,
       users: Array.isArray(parsed.users) ? parsed.users : [],
-      siteContent: {
-        ...DEFAULT_SITE_CONTENT,
-        ...(parsed.siteContent || {}),
-      },
+      siteContent: migrateLegacySiteContent(parsed.siteContent),
       programs:
         Array.isArray(parsed.programs) && parsed.programs.length > 0
-          ? parsed.programs
+          ? migrateLegacyPrograms(parsed.programs)
           : DEFAULT_PROGRAMS,
       programRequests: Array.isArray(parsed.programRequests)
         ? parsed.programRequests
@@ -740,6 +825,7 @@ export function updateSiteContent(
 
   const next: SiteContentConfig = {
     brandName: cleanStr(incoming.brandName, curr.brandName, 80),
+    ownerName: cleanStr(incoming.ownerName, curr.ownerName || 'ALMADA EDUARDO THOMAS', 80),
     foundingDateText: cleanStr(incoming.foundingDateText, curr.foundingDateText, 80),
     locationText: cleanStr(incoming.locationText, curr.locationText, 80),
     mottoText: cleanStr(incoming.mottoText, curr.mottoText, 80),
@@ -874,7 +960,7 @@ export function createProgram(
     summary: String(input.summary || '').trim().slice(0, 400) || `Programa original producido por JUGEND FÜR EINE GRÜNE ZUKUNFT.`,
     fullSynopsis:
       String(input.fullSynopsis || input.summary || '').trim().slice(0, 1200) ||
-      `Producción audiovisual integral realizada en estudio propio.`,
+      `Producción audiovisual multiplataforma realizada por JUGEND FÜR EINE GRÜNE ZUKUNFT.`,
     technicalSpecs: Array.isArray(input.technicalSpecs)
       ? input.technicalSpecs
           .map((s) => String(s).trim().slice(0, 140))
@@ -1070,7 +1156,7 @@ export function updateProgramRequestStatus(
         }`,
         item.equipmentNeeds
           ? `Requerimientos: ${item.equipmentNeeds}`
-          : 'Producción integral en estudio JUGEND FÜR EINE GRÜNE ZUKUNFT',
+          : 'Producción digital multiplataforma JUGEND FÜR EINE GRÜNE ZUKUNFT',
       ],
     });
     if (res.ok) {

@@ -4,6 +4,7 @@ import {
   ArrowRightLeft,
   Check,
   Circle,
+  Clapperboard,
   Copy,
   Edit3,
   ExternalLink,
@@ -26,6 +27,7 @@ import {
   Users,
 } from 'lucide-react';
 import { AudioMixerBar } from './components/AudioMixerBar';
+import { AudienceAndClosingPanel } from './components/AudienceAndClosingPanel';
 import { AutomationPanel } from './components/AutomationPanel';
 import { BroadcastMonitor } from './components/BroadcastMonitor';
 import { CameraEditorModal } from './components/CameraEditorModal';
@@ -47,6 +49,7 @@ import { TemplateStudioPanel } from './components/TemplateStudioPanel';
 import { TouchDeckPanel } from './components/TouchDeckPanel';
 import { TvTitlesPanel } from './components/TvTitlesPanel';
 import {
+  DEFAULT_CLOSING_SLATE,
   DEFAULT_GIVEAWAY_STATE,
   DEFAULT_GUEST_BADGES,
   DEFAULT_SPONSOR_BANNERS,
@@ -66,6 +69,7 @@ import {
 import {
   AudioChannel,
   BroadcastScene,
+  ClosingSlateConfig,
   GiveawayState,
   GuestBadgeItem,
   ObsStatusSnapshot,
@@ -85,7 +89,13 @@ import {
   StaffUserPublic,
 } from './types/producer';
 
-type StudioModuleTab = 'titles' | 'guests' | 'giveaway' | 'comments' | 'sponsors';
+type StudioModuleTab =
+  | 'titles'
+  | 'guests'
+  | 'giveaway'
+  | 'audience_closing'
+  | 'comments'
+  | 'sponsors';
 
 type WorkspaceView =
   | 'switcher'
@@ -152,7 +162,9 @@ interface AppRouteState {
 
 function getRouteStateFromSearch(search: string): AppRouteState {
   const params = new URLSearchParams(search);
-  const rawProgram = (params.get('program') || 'sin-filtro').trim() || 'sin-filtro';
+  const rawProgram =
+    (params.get('program') || params.get('programa') || 'sin-filtro').trim() ||
+    'sin-filtro';
   if (params.get('overlay') === '1') {
     return { mode: 'overlay', programId: rawProgram };
   }
@@ -244,7 +256,6 @@ export default function App() {
           authToken={authToken}
           currentUser={currentUser}
           onRequestAuth={() => setAuthModalOpen(true)}
-          onSelectProgram={(pid) => navigateRoute('live', pid)}
           onOpenApartado={(pid) => navigateRoute('site', pid, pid)}
           onBack={() => {
             if (window.history.length > 1) window.history.back();
@@ -273,15 +284,15 @@ export default function App() {
               </div>
               <div className="space-y-2">
                 <p className="text-xs font-mono text-emerald-400 tracking-wider">
-                  ACCESO RESTRINGIDO · ESTUDIO EN VIVO
+                  ACCESO RESTRINGIDO · MESACONTROL TV
                 </p>
                 <h1 className="font-cinema text-2xl font-semibold text-white">
-                  Estudio exclusivo para personal autorizado
+                  Consola exclusiva para personal autorizado
                 </h1>
                 <p className="text-sm text-slate-400 leading-relaxed">
                   {currentUser
                     ? `Tu rol (${PRODUCER_ROLES[currentUser.role]?.label || currentUser.role}) no tiene autorización para abrir la consola de emisión.`
-                    : 'Solo el administrador total y los usuarios autorizados pueden ingresar al estudio de emisión en vivo.'}
+                    : 'Solo el administrador total y los usuarios autorizados pueden ingresar a la consola de emisión en vivo.'}
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
@@ -433,8 +444,8 @@ function buildProgramStudioConfig(
       cameraType: 'slate',
       layoutMode: 'full',
       slateColor: '#062614',
-      slateHeadline: `${title.toUpperCase()} · YA VOLVEMOS`,
-      description: 'JUGEND FÜR EINE GRÜNE ZUKUNFT · Señal en Vivo',
+      slateHeadline: title,
+      description: 'YA VOLVEMOS',
     },
   ];
 
@@ -557,6 +568,12 @@ function buildProgramStudioConfig(
       activeBannerTitle: null,
       activeGuestBadge: null,
       giveaway: null,
+      closingSlate: {
+        ...DEFAULT_CLOSING_SLATE,
+        active: false,
+        programTitle: title,
+        programLogoUrl: logoUrl,
+      },
       fadeToBlack: false,
     },
   };
@@ -714,6 +731,14 @@ function ControlConsole({
             activeTemplate.id === 'sin-filtro'
               ? OFFICIAL_SINFILTRO_LOGO
               : parsed.logoUrl || activeTemplate.logoUrl,
+          closingSlate: parsed.closingSlate
+            ? { ...parsed.closingSlate, active: false }
+            : {
+                ...DEFAULT_CLOSING_SLATE,
+                active: false,
+                programTitle: activeTemplate.name,
+                programLogoUrl: activeTemplate.logoUrl,
+              },
         };
       }
     } catch {
@@ -814,7 +839,9 @@ function ControlConsole({
   const [localStreamSec, setLocalStreamSec] = useState(0);
   const [localRecordSec, setLocalRecordSec] = useState(0);
   const [viewerCount, setViewerCount] = useState(0);
-  const [audienceCount, setAudienceCount] = useState(36);
+  const [audienceCount, setAudienceCount] = useState(0);
+  const [audienceMode, setAudienceMode] = useState<'real' | 'inflated'>('real');
+  const [inflatedCount, setInflatedCount] = useState(0);
   const [copiedLiveLink, setCopiedLiveLink] = useState(false);
   const [lastRecordedClip, setLastRecordedClip] = useState<{
     blob: Blob;
@@ -1422,6 +1449,18 @@ function ControlConsole({
   }, []);
 
   useEffect(() => {
+    fetch(`/api/broadcast/state?programId=${encodeURIComponent(activeTemplateId)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d.viewerCount === 'number') setViewerCount(d.viewerCount);
+        if (typeof d.audienceCount === 'number') setAudienceCount(d.audienceCount);
+        if (d.audienceMode === 'real' || d.audienceMode === 'inflated') {
+          setAudienceMode(d.audienceMode);
+        }
+        if (typeof d.inflatedCount === 'number') setInflatedCount(d.inflatedCount);
+      })
+      .catch(() => {});
+
     fetch(
       `/api/broadcast/comments?programId=${encodeURIComponent(activeTemplateId)}`
     )
@@ -1442,10 +1481,16 @@ function ControlConsole({
         const data = JSON.parse((ev as MessageEvent).data) as {
           viewerCount?: number;
           audienceCount?: number;
+          audienceMode?: 'real' | 'inflated';
+          inflatedCount?: number;
           comments?: ViewerComment[];
         };
         if (typeof data.viewerCount === 'number') setViewerCount(data.viewerCount);
         if (typeof data.audienceCount === 'number') setAudienceCount(data.audienceCount);
+        if (data.audienceMode === 'real' || data.audienceMode === 'inflated') {
+          setAudienceMode(data.audienceMode);
+        }
+        if (typeof data.inflatedCount === 'number') setInflatedCount(data.inflatedCount);
         if (Array.isArray(data.comments)) setComments(data.comments);
       } catch {
         // ignore
@@ -1457,9 +1502,15 @@ function ControlConsole({
         const data = JSON.parse((ev as MessageEvent).data) as {
           viewerCount?: number;
           audienceCount?: number;
+          audienceMode?: 'real' | 'inflated';
+          inflatedCount?: number;
         };
         if (typeof data.viewerCount === 'number') setViewerCount(data.viewerCount);
         if (typeof data.audienceCount === 'number') setAudienceCount(data.audienceCount);
+        if (data.audienceMode === 'real' || data.audienceMode === 'inflated') {
+          setAudienceMode(data.audienceMode);
+        }
+        if (typeof data.inflatedCount === 'number') setInflatedCount(data.inflatedCount);
       } catch {
         // ignore
       }
@@ -1689,6 +1740,14 @@ function ControlConsole({
         activeBannerTitle: null,
         activeGuestBadge: null,
         giveaway: null,
+        closingSlate: savedOverlays?.closingSlate
+          ? { ...savedOverlays.closingSlate, active: false }
+          : {
+              ...DEFAULT_CLOSING_SLATE,
+              active: false,
+              programTitle: tpl.name,
+              programLogoUrl: tpl.logoUrl,
+            },
         fadeToBlack: false,
       });
       setSponsors(savedSponsors || DEFAULT_SPONSOR_BANNERS);
@@ -1703,7 +1762,7 @@ function ControlConsole({
       setCycleSceneIds(nextScenes.slice(0, 3).map((s) => s.id));
       setCycleRemainingSec(cycleIntervalSec);
 
-      showNotice(`Estudio listo para emitir "${tpl.name}"`);
+      showNotice(`Consola lista para emitir "${tpl.name}"`);
     },
     [
       catalogPrograms,
@@ -1972,7 +2031,7 @@ function ControlConsole({
           // fallback timer
         }
       }
-      showNotice('Grabación de estudio iniciada');
+      showNotice('Grabación iniciada');
     } else {
       setLocalRecording(false);
       if (
@@ -2048,6 +2107,41 @@ function ControlConsole({
     setOverlays((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  const handleApplyAudience = useCallback(
+    async (mode: 'real' | 'inflated', nextInflated: number) => {
+      try {
+        const res = await fetch('/api/broadcast/audience', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            programId: activeTemplateId,
+            mode,
+            inflatedCount: nextInflated,
+          }),
+        });
+        const data = await res.json();
+        if (data?.ok) {
+          if (typeof data.viewerCount === 'number') setViewerCount(data.viewerCount);
+          if (typeof data.audienceCount === 'number') setAudienceCount(data.audienceCount);
+          if (data.audienceMode === 'real' || data.audienceMode === 'inflated') {
+            setAudienceMode(data.audienceMode);
+          }
+          if (typeof data.inflatedCount === 'number') {
+            setInflatedCount(data.inflatedCount);
+          }
+          showNotice(
+            mode === 'real'
+              ? `Vistas configuradas en modo 100% Real (${data.audienceCount})`
+              : `Vistas en pantalla ajustadas a ${data.audienceCount}`
+          );
+        }
+      } catch {
+        showNotice('No se pudo actualizar el conteo de vistas');
+      }
+    },
+    [activeTemplateId, showNotice]
+  );
+
   const handleUpdateShowMeta = useCallback(
     (patch: { showName?: string; accentHex?: string }) => {
       if (typeof patch.showName === 'string') {
@@ -2111,7 +2205,7 @@ function ControlConsole({
             showLowerThird: true,
             showTicker: true,
             lowerThirdTitle: `${showName} · ÚLTIMA HORA`,
-            lowerThirdSubtitle: 'Cobertura en directo desde el estudio',
+            lowerThirdSubtitle: 'Cobertura en directo',
           });
           showNotice('Macro ejecutada: Alerta En Vivo');
         } else if (pad.targetValue === 'welcome_segment') {
@@ -2579,7 +2673,7 @@ function ControlConsole({
             <span className="font-mono tabular-nums">
               {obsConnected
                 ? `OBS ${obsStatus.obsVersion || 'v5'}`
-                : 'Estudio Directo'}
+                : 'Consola Directa'}
             </span>
             <span aria-hidden="true">·</span>
             <span className="font-mono text-slate-300 tabular-nums">
@@ -2659,7 +2753,7 @@ function ControlConsole({
               }`}
             >
               <Layers className="w-3.5 h-3.5" />
-              <span>Modo Estudio</span>
+              <span>Modo Previo</span>
             </button>
 
             <button
@@ -2849,6 +2943,40 @@ function ControlConsole({
                       }`}
                     >
                       {overlays.fadeToBlack ? 'VOLVER DE NEGRO' : 'FTB · NEGRO'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const baseClosing: ClosingSlateConfig =
+                          overlays.closingSlate || {
+                            ...DEFAULT_CLOSING_SLATE,
+                            active: false,
+                            programTitle: showName,
+                            programLogoUrl: overlays.logoUrl,
+                          };
+                        const nextActive = !baseClosing.active;
+                        handleUpdateOverlays({
+                          closingSlate: {
+                            ...baseClosing,
+                            active: nextActive,
+                          },
+                        });
+                        showNotice(
+                          nextActive
+                            ? 'Placa de Cierre activada al aire'
+                            : 'Placa de Cierre retirada'
+                        );
+                      }}
+                      className={`min-h-[34px] w-full px-2 py-1 rounded-md border text-[11px] font-mono font-bold cursor-pointer transition-colors ${
+                        overlays.closingSlate?.active
+                          ? 'bg-emerald-600 border-emerald-400 text-white'
+                          : 'bg-[#0A0D12] border-white/12 text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      {overlays.closingSlate?.active
+                        ? 'OCULTAR CIERRE'
+                        : 'PLACA CIERRE'}
                     </button>
                   </div>
                 </div>
@@ -3161,6 +3289,12 @@ function ControlConsole({
                       activeOnAir: Boolean(overlays.activeBannerTitle),
                     },
                     {
+                      id: 'audience_closing',
+                      label: 'Vistas y Cierre',
+                      icon: Clapperboard,
+                      activeOnAir: Boolean(overlays.closingSlate?.active),
+                    },
+                    {
                       id: 'comments',
                       label: `Comentarios (${comments.length})`,
                       icon: MessageSquare,
@@ -3261,6 +3395,41 @@ function ControlConsole({
                   onClearActiveTitle={() => {
                     handleUpdateOverlays({ activeBannerTitle: null });
                     showNotice('Titular retirado del aire');
+                  }}
+                />
+              )}
+
+              {studioModuleTab === 'audience_closing' && (
+                <AudienceAndClosingPanel
+                  programId={activeTemplateId}
+                  programTitle={showName}
+                  programLogoUrl={overlays.logoUrl}
+                  realViewerCount={viewerCount}
+                  displayedAudienceCount={audienceCount}
+                  audienceMode={audienceMode}
+                  inflatedCount={inflatedCount}
+                  onApplyAudience={handleApplyAudience}
+                  closingSlate={
+                    overlays.closingSlate || {
+                      ...DEFAULT_CLOSING_SLATE,
+                      active: false,
+                      programTitle: showName,
+                      programLogoUrl: overlays.logoUrl,
+                    }
+                  }
+                  onChangeClosingSlate={(nextClosing) =>
+                    handleUpdateOverlays({ closingSlate: nextClosing })
+                  }
+                  onResetClosingSlate={() => {
+                    handleUpdateOverlays({
+                      closingSlate: {
+                        ...DEFAULT_CLOSING_SLATE,
+                        active: Boolean(overlays.closingSlate?.active),
+                        programTitle: showName,
+                        programLogoUrl: overlays.logoUrl,
+                      },
+                    });
+                    showNotice('Créditos de cierre restaurados');
                   }}
                 />
               )}

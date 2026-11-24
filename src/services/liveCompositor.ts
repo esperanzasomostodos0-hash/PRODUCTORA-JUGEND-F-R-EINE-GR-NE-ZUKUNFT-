@@ -160,18 +160,18 @@ export function renderBroadcastFrame({
     }
 
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 42px Outfit, sans-serif';
+    ctx.font = 'bold 46px Outfit, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(
-      scene.slateHeadline || scene.name,
+      (overlays.channelName || scene.slateHeadline || scene.name).toUpperCase(),
       width * 0.5,
       height * 0.54,
       width - 160
     );
 
-    ctx.fillStyle = '#CBD5E1';
-    ctx.font = '20px "Plus Jakarta Sans", sans-serif';
-    ctx.fillText(scene.description || '', width * 0.5, height * 0.62, width - 200);
+    ctx.fillStyle = '#6EE7B7';
+    ctx.font = 'bold 26px "JetBrains Mono", monospace';
+    ctx.fillText('YA VOLVEMOS', width * 0.5, height * 0.63, width - 200);
     ctx.textAlign = 'left';
   } else if (scene.layoutMode === 'split') {
     const halfW = width * 0.5 - 3;
@@ -538,6 +538,186 @@ export function renderBroadcastFrame({
       );
     }
 
+    ctx.textAlign = 'left';
+  }
+
+  // 5C. End-of-Program Closing Slate ("Placa de Cierre")
+  if (overlays.closingSlate?.active) {
+    const cs = overlays.closingSlate;
+    const csGrad = ctx.createRadialGradient(
+      width * 0.5,
+      height * 0.25,
+      60,
+      width * 0.5,
+      height * 0.5,
+      width * 0.72
+    );
+    csGrad.addColorStop(0, '#0D2918');
+    csGrad.addColorStop(1, '#040806');
+    ctx.fillStyle = csGrad;
+    ctx.fillRect(0, 0, width, height);
+
+    // Top 3 logos header
+    const colPositions = [width * 0.2, width * 0.5, width * 0.8];
+    const logoBoxTop = 38;
+    const maxLogoH = 82;
+    const maxLogoW = 240;
+
+    const drawLogoSlot = (
+      cx: number,
+      url: string | undefined,
+      caption: string,
+      isRadioFallback = false
+    ) => {
+      const img = url ? getCachedImage(url) : null;
+      if (img) {
+        const ratio = img.naturalWidth / img.naturalHeight;
+        let dw = maxLogoH * ratio;
+        let dh = maxLogoH;
+        if (dw > maxLogoW) {
+          dw = maxLogoW;
+          dh = dw / ratio;
+        }
+        ctx.drawImage(img, cx - dw * 0.5, logoBoxTop + (maxLogoH - dh) * 0.5, dw, dh);
+      } else if (isRadioFallback) {
+        // Crisp built-in Radioactiva 88.5 FM emblem
+        const pillW = 190;
+        const pillH = 56;
+        const px = cx - pillW * 0.5;
+        const py = logoBoxTop + 14;
+        ctx.fillStyle = 'rgba(6, 78, 59, 0.85)';
+        ctx.fillRect(px, py, pillW, pillH);
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px, py, pillW, pillH);
+
+        // Broadcast wave arcs on left
+        ctx.strokeStyle = '#34D399';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(px + 34, py + 28, 7, -Math.PI * 0.4, Math.PI * 0.4);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(px + 34, py + 28, 13, -Math.PI * 0.4, Math.PI * 0.4);
+        ctx.stroke();
+        ctx.fillStyle = '#34D399';
+        ctx.beginPath();
+        ctx.arc(px + 28, py + 28, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 20px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('88.5 FM', cx + 20, py + 35);
+      } else {
+        ctx.fillStyle = accentHex;
+        ctx.fillRect(cx - 75, logoBoxTop + 20, 150, 44);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 18px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(caption, cx, logoBoxTop + 49, 140);
+      }
+
+      ctx.fillStyle = '#CBD5E1';
+      ctx.font = 'bold 14px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(caption, cx, logoBoxTop + maxLogoH + 22, 320);
+    };
+
+    drawLogoSlot(
+      colPositions[0],
+      cs.programLogoUrl || overlays.logoUrl,
+      cs.programTitle || overlays.channelName || '#SinFiltro'
+    );
+    drawLogoSlot(
+      colPositions[1],
+      cs.radioLogoUrl,
+      cs.radioName || 'Radioactiva 88.5 FM',
+      true
+    );
+    drawLogoSlot(
+      colPositions[2],
+      cs.producerLogoUrl || '/assets/aistudio/jz-logo-transparent.png',
+      cs.producerName || 'JUGEND FÜR EINE GRÜNE ZUKUNFT'
+    );
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(56, 162);
+    ctx.lineTo(width - 56, 162);
+    ctx.stroke();
+
+    // Closing headline
+    ctx.fillStyle = '#6EE7B7';
+    ctx.font = 'bold 28px Outfit, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      (cs.headline || 'GRACIAS POR ACOMPAÑARNOS').toUpperCase(),
+      width * 0.5,
+      208,
+      width - 120
+    );
+
+    // 2-column area credits
+    const credits = (cs.credits || []).slice(0, 8);
+    const gridLeft = 86;
+    const colGap = 36;
+    const cardW = (width - gridLeft * 2 - colGap) * 0.5;
+    const cardH = 82;
+    const startY = 232;
+    const rowGap = 16;
+
+    ctx.textAlign = 'left';
+    credits.forEach((entry, idx) => {
+      const col = idx % 2;
+      const row = Math.floor(idx / 2);
+      const x = gridLeft + col * (cardW + colGap);
+      const y = startY + row * (cardH + rowGap);
+
+      ctx.fillStyle = 'rgba(10, 18, 14, 0.88)';
+      ctx.fillRect(x, y, cardW, cardH);
+      ctx.fillStyle = accentHex;
+      ctx.fillRect(x, y, 5, cardH);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, cardW, cardH);
+
+      ctx.fillStyle = '#6EE7B7';
+      ctx.font = 'bold 13px "JetBrains Mono", monospace';
+      ctx.fillText((entry.area || '').toUpperCase(), x + 18, y + 30, cardW - 32);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 20px Outfit, sans-serif';
+      ctx.fillText(entry.names || '', x + 18, y + 60, cardW - 32);
+    });
+
+    // Bottom footer with Owner & Creator credit
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.beginPath();
+    ctx.moveTo(56, height - 66);
+    ctx.lineTo(width - 56, height - 66);
+    ctx.stroke();
+
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = 'bold 15px "JetBrains Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(
+      cs.producerName || 'JUGEND FÜR EINE GRÜNE ZUKUNFT',
+      60,
+      height - 32,
+      540
+    );
+
+    ctx.fillStyle = '#6EE7B7';
+    ctx.font = 'bold 16px "JetBrains Mono", monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(
+      cs.ownerCredit || 'Dueño y Creador: ALMADA EDUARDO THOMAS',
+      width - 60,
+      height - 32,
+      620
+    );
     ctx.textAlign = 'left';
   }
 

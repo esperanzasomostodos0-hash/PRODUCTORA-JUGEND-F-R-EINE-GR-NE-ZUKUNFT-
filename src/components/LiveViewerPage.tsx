@@ -14,7 +14,6 @@ import {
   Send,
   Store,
   Trophy,
-  Tv,
   Users,
   Volume2,
   VolumeX,
@@ -108,7 +107,6 @@ interface LiveViewerPageProps {
   authToken?: string | null;
   currentUser?: StaffUserPublic | null;
   onRequestAuth?: () => void;
-  onSelectProgram?: (programId: string) => void;
   onOpenApartado?: (programId: string) => void;
   onBack?: () => void;
   onHome?: () => void;
@@ -119,7 +117,6 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
   authToken = null,
   currentUser = null,
   onRequestAuth,
-  onSelectProgram,
   onOpenApartado,
   onBack,
   onHome,
@@ -130,7 +127,7 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
   const [siteWhatsappDisplay, setSiteWhatsappDisplay] = useState<string>(WHATSAPP_DISPLAY);
   const [viewerState, setViewerState] = useState<ViewerState | null>(null);
   const [hasFallbackFrame, setHasFallbackFrame] = useState(false);
-  const [audienceCount, setAudienceCount] = useState<number>(36);
+  const [audienceCount, setAudienceCount] = useState<number>(0);
   const [rtcConnected, setRtcConnected] = useState(false);
   const [rtcVideoReady, setRtcVideoReady] = useState(false);
   const [muted, setMuted] = useState(true);
@@ -681,35 +678,6 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
             )}
           </div>
         </div>
-
-        {/* Program Signal Switcher Strip when multiple programs exist */}
-        {programs.length > 1 && onSelectProgram && (
-          <div className="border-t border-white/8 bg-[#060A07]">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto text-xs">
-              <span className="text-[11px] font-mono text-slate-400 inline-flex items-center gap-1.5 shrink-0 pr-1">
-                <Tv className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Señales:</span>
-              </span>
-              {programs.map((prog) => {
-                const active = prog.id === activeProgramId;
-                return (
-                  <button
-                    key={prog.id}
-                    type="button"
-                    onClick={() => onSelectProgram(prog.id)}
-                    className={`px-3 py-1 rounded-md font-medium whitespace-nowrap cursor-pointer transition-colors ${
-                      active
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-white/5 hover:bg-white/10 text-slate-300'
-                    }`}
-                  >
-                    {prog.title}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </header>
 
       {/* Main Player Viewport + Programas Anteriores + Espacio Publicitario + Comentarios */}
@@ -958,7 +926,7 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
         >
           <div className="text-center space-y-2.5 max-w-2xl mx-auto">
             <div className="text-[11px] font-mono font-semibold tracking-[0.16em] text-emerald-400">
-              PAUTA COMERCIAL · WHATSAPP {siteWhatsappDisplay}
+              PAUTA COMERCIAL · ESPACIO DISPONIBLE
             </div>
 
             <h2
@@ -969,7 +937,7 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
             </h2>
 
             <p className="text-xs sm:text-sm text-slate-400">
-              Espacio disponible para comercios, marcas y emprendimientos que acompañan el programa {showName}. Consultas directas al {siteWhatsappDisplay}.
+              Espacio disponible para comercios, marcas y emprendimientos que acompañan el programa {showName}. Consultas directas por WhatsApp al {siteWhatsappDisplay}.
             </p>
           </div>
 
@@ -1028,21 +996,16 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-white/10 space-y-2">
+                  <div className="pt-3 border-t border-white/10">
                     <a
                       href={bannerWhatsAppUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full min-h-[42px] px-4 py-2 bg-[#0D1310] hover:bg-emerald-600/20 border border-white/12 hover:border-emerald-500/50 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-2 transition-colors"
                     >
-                      <span>{sp.ctaText || 'Contactar para anunciar'}</span>
+                      <span>{sp.ctaText || 'Pedir espacio por WhatsApp'}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </a>
-                    {!sp.isOccupied && (
-                      <div className="text-center text-[10px] font-mono text-emerald-400/90 tabular-nums">
-                        WhatsApp {siteWhatsappDisplay}
-                      </div>
-                    )}
                   </div>
                 </article>
               );
@@ -1188,7 +1151,10 @@ export const LiveViewerPage: React.FC<LiveViewerPageProps> = ({
             <span className="text-slate-200 font-semibold">
               JUGEND FÜR EINE GRÜNE ZUKUNFT
             </span>{' '}
-            · Fundada el 20/11/2026
+            · Fundada el 20/11/2026 ·{' '}
+            <span className="text-emerald-300 font-medium">
+              Dueño y Creador: ALMADA EDUARDO THOMAS
+            </span>
           </div>
           <a
             href="/"

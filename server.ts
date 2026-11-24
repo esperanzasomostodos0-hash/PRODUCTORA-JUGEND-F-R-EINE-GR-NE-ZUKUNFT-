@@ -71,6 +71,24 @@ interface GiveawayPayload {
   winnerNote?: string;
 }
 
+interface ClosingCreditPayload {
+  area: string;
+  names: string;
+}
+
+interface ClosingSlatePayload {
+  active: boolean;
+  headline: string;
+  programTitle?: string;
+  programLogoUrl?: string;
+  radioName: string;
+  radioLogoUrl?: string;
+  producerName: string;
+  producerLogoUrl?: string;
+  ownerCredit: string;
+  credits: ClosingCreditPayload[];
+}
+
 interface OverlayPayload {
   showLowerThird: boolean;
   lowerThirdTitle: string;
@@ -91,6 +109,7 @@ interface OverlayPayload {
   activeBannerTitle?: ActiveTvTitlePayload | null;
   activeGuestBadge?: GuestBadgePayload | null;
   giveaway?: GiveawayPayload | null;
+  closingSlate?: ClosingSlatePayload | null;
   fadeToBlack?: boolean;
 }
 
@@ -148,11 +167,51 @@ interface BroadcastRoom {
   latestFrameDataUrl: string | null;
   latestFrameUpdatedAt: number;
   latestFrameSeq: number;
-  simulatedAudience: number;
-  offlineTick: number;
-  liveTick: number;
+  audienceMode: 'real' | 'inflated';
+  inflatedCount: number;
   commentsStore: ViewerCommentPayload[];
   clients: Map<string, SseClient>;
+}
+
+const PRODUCER_LOGO_URL = '/assets/aistudio/jz-logo-transparent.png';
+
+function buildDefaultClosingSlate(
+  programTitle: string,
+  programLogoUrl?: string
+): ClosingSlatePayload {
+  return {
+    active: false,
+    headline: 'GRACIAS POR ACOMPAÑARNOS',
+    programTitle,
+    programLogoUrl: programLogoUrl || OFFICIAL_LOGO_URL,
+    radioName: 'Radioactiva 88.5 FM',
+    radioLogoUrl: '',
+    producerName: 'JUGEND FÜR EINE GRÜNE ZUKUNFT',
+    producerLogoUrl: PRODUCER_LOGO_URL,
+    ownerCredit: 'Dueño y Creador: ALMADA EDUARDO THOMAS',
+    credits: [
+      {
+        area: 'Dirección General y Creación',
+        names: 'ALMADA EDUARDO THOMAS',
+      },
+      {
+        area: 'Producción General',
+        names: 'ALMADA EDUARDO THOMAS',
+      },
+      {
+        area: 'Conducción',
+        names: 'Equipo de Conducción JZ',
+      },
+      {
+        area: 'Operación Técnica y Transmisión',
+        names: 'MesaControl TV · JZ',
+      },
+      {
+        area: 'Gráfica y Redes',
+        names: 'Equipo Digital JZ',
+      },
+    ],
+  };
 }
 
 const DEFAULT_SPONSORS: SponsorBannerPayload[] = [
@@ -162,7 +221,7 @@ const DEFAULT_SPONSORS: SponsorBannerPayload[] = [
     name: 'Auspiciante 1',
     message: 'Espacio reservado para comercio o anunciante local.',
     badgeText: 'Espacio publicitario disponible',
-    ctaText: 'Contactar para anunciar',
+    ctaText: 'Pedir espacio por WhatsApp',
     isOccupied: false,
   },
   {
@@ -171,7 +230,7 @@ const DEFAULT_SPONSORS: SponsorBannerPayload[] = [
     name: 'Auspiciante 2',
     message: 'Espacio reservado para comercio o anunciante local.',
     badgeText: 'Espacio publicitario disponible',
-    ctaText: 'Contactar para anunciar',
+    ctaText: 'Pedir espacio por WhatsApp',
     isOccupied: false,
   },
   {
@@ -180,13 +239,10 @@ const DEFAULT_SPONSORS: SponsorBannerPayload[] = [
     name: 'Auspiciante 3',
     message: 'Espacio reservado para comercio o anunciante local.',
     badgeText: 'Espacio publicitario disponible',
-    ctaText: 'Contactar para anunciar',
+    ctaText: 'Pedir espacio por WhatsApp',
     isOccupied: false,
   },
 ];
-
-const OFFLINE_DELTAS = [1, -1, 0, 2, -1, -1, 1, 0, -2, 1];
-const LIVE_DELTAS = [2, -1, 1, 0, -2, 3, -1, 1, -2, 2, 0, -1];
 
 const broadcastRooms = new Map<string, BroadcastRoom>();
 
@@ -208,11 +264,11 @@ function buildDefaultStateForProgram(programId: string): LiveBroadcastState {
       accentHex: '#16A34A',
       activeScene: {
         id: 'sf-estudio',
-        name: 'Estudio #SinFiltro',
+        name: 'Cámara Principal #SinFiltro',
         cameraLabel: 'CAM 1 · GENERAL',
         cameraType: 'studio',
         layoutMode: 'full',
-        description: 'Cámara principal de estudio #SinFiltro.',
+        description: 'Cámara principal en vivo de #SinFiltro.',
       },
       overlays: {
         showLowerThird: true,
@@ -236,6 +292,7 @@ function buildDefaultStateForProgram(programId: string): LiveBroadcastState {
         activeBannerTitle: null,
         activeGuestBadge: null,
         giveaway: null,
+        closingSlate: buildDefaultClosingSlate('#SinFiltro', OFFICIAL_LOGO_URL),
         fadeToBlack: false,
       },
       sponsors: DEFAULT_SPONSORS.map((s) => ({ ...s })),
@@ -249,6 +306,7 @@ function buildDefaultStateForProgram(programId: string): LiveBroadcastState {
   const hostTeam = prog?.hostTeam || 'JUGEND FÜR EINE GRÜNE ZUKUNFT';
   const channelLabel = prog?.channelOrSignal || 'Streaming HD JZ';
   const siteLogo = getSiteContent().logoUrl || OFFICIAL_LOGO_URL;
+  const progLogo = prog?.logoUrl || siteLogo;
 
   return {
     programId,
@@ -257,8 +315,8 @@ function buildDefaultStateForProgram(programId: string): LiveBroadcastState {
     showName: title,
     accentHex: '#16A34A',
     activeScene: {
-      id: `${programId}-estudio`,
-      name: `Estudio ${title}`,
+      id: `${programId}-cam1`,
+      name: `Cámara Principal ${title}`,
       cameraLabel: 'CAM 1 · GENERAL',
       cameraType: 'studio',
       layoutMode: 'full',
@@ -272,7 +330,7 @@ function buildDefaultStateForProgram(programId: string): LiveBroadcastState {
       tickerText: `ESTÁS VIENDO ${title} EN VIVO · ${hostTeam} · ${channelLabel}`,
       showBug: true,
       channelName: title,
-      logoUrl: prog?.logoUrl || siteLogo,
+      logoUrl: progLogo,
       showClock: true,
       showLiveBadge: true,
       showScoreboard: false,
@@ -284,6 +342,7 @@ function buildDefaultStateForProgram(programId: string): LiveBroadcastState {
       activeBannerTitle: null,
       activeGuestBadge: null,
       giveaway: null,
+      closingSlate: buildDefaultClosingSlate(title, progLogo),
       fadeToBlack: false,
     },
     sponsors: DEFAULT_SPONSORS.map((s) => ({ ...s })),
@@ -336,9 +395,8 @@ function getOrCreateRoom(rawProgramId?: unknown): BroadcastRoom {
     latestFrameDataUrl: null,
     latestFrameUpdatedAt: 0,
     latestFrameSeq: 0,
-    simulatedAudience: 36,
-    offlineTick: 0,
-    liveTick: 0,
+    audienceMode: 'real',
+    inflatedCount: 0,
     commentsStore: buildInitialCommentsForProgram(programId),
     clients: new Map<string, SseClient>(),
   };
@@ -364,10 +422,10 @@ function getBroadcasterOnline(room: BroadcastRoom): boolean {
 
 function getAudienceDisplayCount(room: BroadcastRoom): number {
   const realViewers = getViewerCount(room);
-  if (room.currentState.isLive) {
-    return Math.max(2567, room.simulatedAudience + realViewers);
+  if (room.audienceMode === 'inflated') {
+    return Math.max(0, Math.round(room.inflatedCount)) + realViewers;
   }
-  return Math.max(24, room.simulatedAudience);
+  return realViewers;
 }
 
 function sendSse(res: Response, event: string, data: unknown) {
@@ -396,6 +454,8 @@ function broadcastPresence(room: BroadcastRoom) {
     programId: room.programId,
     viewerCount: getViewerCount(room),
     audienceCount: getAudienceDisplayCount(room),
+    audienceMode: room.audienceMode,
+    inflatedCount: room.inflatedCount,
     broadcasterOnline: getBroadcasterOnline(room),
   };
   broadcastAll(room, 'presence', payload);
@@ -407,32 +467,6 @@ function notifyBroadcasterOfWaitingViewers(room: BroadcastRoom) {
       broadcastAll(room, 'viewer-joined', { viewerId: c.id }, 'broadcaster');
     }
   });
-}
-
-// Synchronized organic audience cadence across active rooms (6.5s - 10.5s)
-function scheduleAudienceTick() {
-  const delayMs = 6500 + Math.floor(Math.random() * 4000);
-  setTimeout(() => {
-    broadcastRooms.forEach((room) => {
-      if (room.currentState.isLive) {
-        let delta = LIVE_DELTAS[room.liveTick % LIVE_DELTAS.length];
-        room.liveTick += 1;
-        if (room.simulatedAudience > 2625 && delta > 0) {
-          delta = -1;
-        }
-        room.simulatedAudience = Math.max(2567, room.simulatedAudience + delta);
-      } else {
-        const delta = OFFLINE_DELTAS[room.offlineTick % OFFLINE_DELTAS.length];
-        room.offlineTick += 1;
-        const next = room.simulatedAudience + delta;
-        room.simulatedAudience = Math.max(31, Math.min(42, next));
-      }
-      if (room.clients.size > 0) {
-        broadcastPresence(room);
-      }
-    });
-    scheduleAudienceTick();
-  }, delayMs);
 }
 
 const MAX_VIDEO_UPLOAD_BYTES = 250 * 1024 * 1024; // 250 MB
@@ -478,7 +512,7 @@ export function createApiApp(): Express {
     });
   });
 
-  // Summary of all broadcast rooms (live status per program)
+  // Summary of all broadcast rooms (live status + preview frame per program)
   app.get('/api/broadcast/rooms', (_req: Request, res: Response) => {
     const programs = listPrograms();
     programs.forEach((p) => getOrCreateRoom(p.id));
@@ -490,7 +524,10 @@ export function createApiApp(): Express {
       updatedAt: room.currentState.updatedAt,
       viewerCount: getViewerCount(room),
       audienceCount: getAudienceDisplayCount(room),
+      audienceMode: room.audienceMode,
+      inflatedCount: room.inflatedCount,
       broadcasterOnline: getBroadcasterOnline(room),
+      previewFrame: room.currentState.isLive ? room.latestFrameDataUrl : null,
     }));
     res.json({ ok: true, rooms });
   });
@@ -505,8 +542,35 @@ export function createApiApp(): Express {
       frameUpdatedAt: room.latestFrameUpdatedAt,
       viewerCount: getViewerCount(room),
       audienceCount: getAudienceDisplayCount(room),
+      audienceMode: room.audienceMode,
+      inflatedCount: room.inflatedCount,
       broadcasterOnline: getBroadcasterOnline(room),
       comments: room.commentsStore,
+    });
+  });
+
+  // MesaControl TV audience control (100% real views vs manual inflated value)
+  app.post('/api/broadcast/audience', (req: Request, res: Response) => {
+    const body = req.body as {
+      programId?: string;
+      mode?: 'real' | 'inflated';
+      inflatedCount?: number;
+    };
+    const room = getOrCreateRoom(req.query.programId || body.programId);
+    if (body.mode === 'real' || body.mode === 'inflated') {
+      room.audienceMode = body.mode;
+    }
+    if (typeof body.inflatedCount === 'number' && Number.isFinite(body.inflatedCount)) {
+      room.inflatedCount = Math.max(0, Math.min(1_000_000, Math.round(body.inflatedCount)));
+    }
+    broadcastPresence(room);
+    res.json({
+      ok: true,
+      programId: room.programId,
+      viewerCount: getViewerCount(room),
+      audienceCount: getAudienceDisplayCount(room),
+      audienceMode: room.audienceMode,
+      inflatedCount: room.inflatedCount,
     });
   });
 
@@ -588,6 +652,8 @@ export function createApiApp(): Express {
       frame: room.latestFrameDataUrl,
       viewerCount: getViewerCount(room),
       audienceCount: getAudienceDisplayCount(room),
+      audienceMode: room.audienceMode,
+      inflatedCount: room.inflatedCount,
       broadcasterOnline: getBroadcasterOnline(room),
       comments: room.commentsStore,
     });
@@ -627,14 +693,6 @@ export function createApiApp(): Express {
     const wasLive = room.currentState.isLive;
     const nextIsLive =
       typeof body.isLive === 'boolean' ? body.isLive : room.currentState.isLive;
-
-    if (nextIsLive && !wasLive) {
-      room.simulatedAudience = 2569; // Natural start right above 2567
-      room.liveTick = 0;
-    } else if (!nextIsLive && wasLive) {
-      room.simulatedAudience = 36;
-      room.offlineTick = 0;
-    }
 
     room.currentState = {
       ...room.currentState,
@@ -1440,8 +1498,6 @@ async function startServer() {
       });
     }
   }
-
-  scheduleAudienceTick();
 
   app.listen(port, '0.0.0.0', () => {
     console.log(`MesaControl TV server listening on http://0.0.0.0:${port}`);

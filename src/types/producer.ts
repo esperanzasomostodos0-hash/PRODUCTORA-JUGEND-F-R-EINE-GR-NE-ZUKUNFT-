@@ -24,7 +24,7 @@ export const PRODUCER_ROLES: Record<ProducerRole, RoleDefinition> = {
     id: 'admin_total',
     label: 'Administrador Total',
     description:
-      'Control absoluto de la productora: usuarios, roles, edición completa del sitio, programas y estudio.',
+      'Control absoluto de la productora: usuarios, roles, edición completa del sitio, programas y MesaControl TV.',
     canManageUsers: true,
     canEditSite: true,
     canCreatePrograms: true,
@@ -36,7 +36,7 @@ export const PRODUCER_ROLES: Record<ProducerRole, RoleDefinition> = {
     id: 'director_general',
     label: 'Dirección General',
     description:
-      'Aprueba solicitudes de nuevos programas, crea formatos en cartelera y dirige el estudio.',
+      'Aprueba solicitudes de nuevos programas, crea formatos en cartelera y dirige las emisiones en vivo.',
     canManageUsers: false,
     canEditSite: true,
     canCreatePrograms: true,
@@ -58,7 +58,7 @@ export const PRODUCER_ROLES: Record<ProducerRole, RoleDefinition> = {
   },
   operador_estudio: {
     id: 'operador_estudio',
-    label: 'Operador/a de Estudio y OBS',
+    label: 'Operador/a de MesaControl y OBS',
     description:
       'Opera la consola MesaControl TV, cámaras en vivo, audio, escenas y transmisión HD.',
     canManageUsers: false,
@@ -84,7 +84,7 @@ export const PRODUCER_ROLES: Record<ProducerRole, RoleDefinition> = {
     id: 'conductor',
     label: 'Conducción / Talento',
     description:
-      'Consulta cartelera, escaletas en vivo, participación de invitados y estudio.',
+      'Consulta cartelera, escaletas en vivo, participación de invitados y consola de emisión.',
     canManageUsers: false,
     canEditSite: false,
     canCreatePrograms: false,
@@ -143,6 +143,7 @@ export interface SitePartnershipModel {
 
 export interface SiteContentConfig {
   brandName: string;
+  ownerName?: string;
   foundingDateText: string;
   locationText: string;
   mottoText: string;

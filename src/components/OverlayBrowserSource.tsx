@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { TV_SHOW_TEMPLATES } from '../data/tvTemplates';
+import { Radio } from 'lucide-react';
+import { OFFICIAL_PRODUCER_LOGO, TV_SHOW_TEMPLATES } from '../data/tvTemplates';
 import { OverlayState } from '../types/broadcast';
 
 export const OVERLAY_CHANNEL_NAME = 'mesacontrol_overlay_sync';
@@ -324,6 +325,88 @@ export const OverlayBrowserSource: React.FC = () => {
                 {overlays.tickerText}
               </span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {overlays.closingSlate?.active && (
+        <div
+          className="absolute inset-0 z-40 flex flex-col justify-between p-12 text-center"
+          style={{
+            background: `radial-gradient(circle at 50% 25%, ${accentHex}44 0%, #050907 78%)`,
+          }}
+        >
+          <div className="grid grid-cols-3 items-center gap-8 border-b border-white/15 pb-6">
+            <div className="flex flex-col items-center gap-2">
+              {(overlays.closingSlate.programLogoUrl || overlays.logoUrl) && (
+                <img
+                  src={overlays.closingSlate.programLogoUrl || overlays.logoUrl}
+                  alt={overlays.closingSlate.programTitle || overlays.channelName}
+                  className="h-20 w-auto object-contain"
+                />
+              )}
+              <span className="text-sm font-mono text-slate-300">
+                {overlays.closingSlate.programTitle || overlays.channelName}
+              </span>
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              {overlays.closingSlate.radioLogoUrl ? (
+                <img
+                  src={overlays.closingSlate.radioLogoUrl}
+                  alt={overlays.closingSlate.radioName}
+                  className="h-20 w-auto object-contain"
+                />
+              ) : (
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-950/90 border border-emerald-500/40 text-emerald-300">
+                  <Radio className="w-6 h-6" />
+                  <span className="text-xl font-mono font-bold">88.5 FM</span>
+                </div>
+              )}
+              <span className="text-sm font-mono text-slate-300">
+                {overlays.closingSlate.radioName || 'Radioactiva 88.5 FM'}
+              </span>
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              <img
+                src={overlays.closingSlate.producerLogoUrl || OFFICIAL_PRODUCER_LOGO}
+                alt={overlays.closingSlate.producerName}
+                className="h-20 w-auto object-contain"
+              />
+              <span className="text-sm font-mono text-slate-300">
+                {overlays.closingSlate.producerName || 'JUGEND FÜR EINE GRÜNE ZUKUNFT'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col justify-center gap-6 py-4">
+            <p className="font-display text-3xl font-extrabold tracking-wider text-emerald-300 uppercase">
+              {overlays.closingSlate.headline || 'GRACIAS POR ACOMPAÑARNOS'}
+            </p>
+            <div className="grid grid-cols-2 gap-4 text-left max-w-5xl mx-auto w-full">
+              {overlays.closingSlate.credits.slice(0, 8).map((item, idx) => (
+                <div
+                  key={`${item.area}-${idx}`}
+                  className="bg-black/45 border border-white/10 rounded-lg px-5 py-3"
+                >
+                  <p className="text-xs font-mono uppercase tracking-wider text-emerald-400">
+                    {item.area}
+                  </p>
+                  <p className="text-xl font-semibold text-white">{item.names}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-white/15 pt-4 flex items-center justify-between text-base font-mono text-slate-300">
+            <span>
+              {overlays.closingSlate.producerName || 'JUGEND FÜR EINE GRÜNE ZUKUNFT'}
+            </span>
+            <span className="text-emerald-300 font-semibold">
+              {overlays.closingSlate.ownerCredit ||
+                'Dueño y Creador: ALMADA EDUARDO THOMAS'}
+            </span>
           </div>
         </div>
       )}

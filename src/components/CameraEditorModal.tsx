@@ -16,15 +16,15 @@ interface CameraEditorModalProps {
 
 const STUDIO_PRESETS = [
   {
-    label: 'Estudio Podcast / Debate',
+    label: 'Set Podcast / Debate',
     url: '/src/assets/images/studio_podcast_desk_1795296509941.jpg',
   },
   {
-    label: 'Estudio Talk Show',
+    label: 'Set Talk Show',
     url: '/src/assets/images/studio_talk_show_1795296510184.jpg',
   },
   {
-    label: 'Estudio Noticiero',
+    label: 'Set Noticiero',
     url: '/src/assets/images/studio_news_anchor_1795296509451.jpg',
   },
   {
@@ -236,7 +236,7 @@ export const CameraEditorModal: React.FC<CameraEditorModalProps> = ({
                 <option value="webcam">Cámara Real / USB / OBS Virtual Cam</option>
                 <option value="screen">Capturar Pantalla o Ventana</option>
                 <option value="media">Subir Video MP4 o Imagen</option>
-                <option value="studio">Escenario de Estudio Predefinido</option>
+                <option value="studio">Fondo Escénico Predefinido</option>
                 <option value="slate">Placa Gráfica / Pausa (Slate)</option>
               </select>
             </div>
@@ -338,7 +338,7 @@ export const CameraEditorModal: React.FC<CameraEditorModalProps> = ({
           {draft.cameraType === 'studio' && (
             <div className="p-3.5 bg-[#0A0D12] border border-white/10 rounded-lg space-y-2.5">
               <label className="block text-xs font-semibold text-white">
-                Escenario de Estudio
+                Fondo Escénico
               </label>
               <select
                 value={draft.backdropUrl}
